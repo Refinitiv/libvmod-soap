@@ -13,7 +13,7 @@ apr_thread_mutex_t* s_module_mutex = NULL;
     init wsg
 */
 #define init_r(r) routine=#r; if ((status = r)) goto E_x_i_t_;
-int init_wsg_module(const char* config)
+int init_wsg_module()
 {
     apr_status_t status = APR_SUCCESS;
     const char* routine = "n/a";
@@ -40,26 +40,6 @@ E_x_i_t_:
         syslog(LOG_EMERG, "WSG module initialization failed: routine:'%s',rc=%d,message:'%s'", routine, status, s_init_error); 
     }
     return status;
-
-}
-
-/* -------------------------------------------------------------------------------------/
-    uninit wsg
-*/
-void uninit_wsg_module()
-{
-    xmlCleanupParser();
-    apr_terminate();
-}
-
-void vmod_init(struct sess* s, const char* config)
-{
-    if (module_inited) return;
-    if (init_wsg_module(config) == 0)
-    {
-        module_inited = 1;
-    }
-    atexit(uninit_wsg_module);
 }
 
 /* -------------------------------------------------------------------------------------/
@@ -165,19 +145,26 @@ static void destroy_sess(const sess* s)
 int __match_proto__(vmod_event_f)
 event_function(VRT_CTX, struct vmod_priv *priv, enum vcl_event_e e)
 {
-	switch (e) {
-	case VCL_EVENT_LOAD:
-		break;
-	case VCL_EVENT_WARM:
-		break;
-	case VCL_EVENT_COLD:
-		break;
-	case VCL_EVENT_DISCARD:
-		break;
-	default:
-		return (0);
-	}
-	return (0);
+    switch (e) {
+    case VCL_EVENT_LOAD:
+        if(module_inited++ == 0) {
+            return init_wsg_module();
+        }
+        break;
+    case VCL_EVENT_WARM:
+        break;
+    case VCL_EVENT_COLD:
+        break;
+    case VCL_EVENT_DISCARD:
+        if(--module_inited == 0) {
+            xmlCleanupParser();
+            apr_terminate();
+        }
+        break;
+    default:
+        return (0);
+    }
+    return (0);
 }
 
 struct vmod_soap {
