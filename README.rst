@@ -10,28 +10,12 @@ import soap;
 DESCRIPTION
 ===========
 
-Soap Varnish vmod demonstrating how to write an out-of-tree Varnish vmod.
-
-Implements the traditional Hello World as a vmod.
+SOAP vmodule for Varnish 4 and 5.
 
 FUNCTIONS
 =========
 
-hello
------
-
-Prototype
-        ::
-
-                hello(STRING S)
-Return value
-	STRING
-Description
-	Returns "Hello, " prepended to S
-Soap
-        ::
-
-                set resp.http.hello = soap.hello("World");
+<In progress>
 
 INSTALLATION
 ============
@@ -89,9 +73,8 @@ In your VCL you could then use this vmod along the following lines::
 
         import soap;
 
-        sub vcl_deliver {
-                # This sets resp.http.hello to "Hello, World"
-                set resp.http.hello = soap.hello("World");
+        sub vcl_recv {
+                set req.http.soap-action = soap.action();
         }
 
 COMMON PROBLEMS
@@ -102,8 +85,4 @@ COMMON PROBLEMS
   Check whether ``PKG_CONFIG_PATH`` and ``ACLOCAL_PATH`` were set correctly
   before calling ``autogen.sh`` and ``configure``
 
-* Incompatibilities with different Varnish Cache versions
 
-  Make sure you build this vmod against its correspondent Varnish Cache version.
-  For instance, to build against Varnish Cache 4.1, this vmod must be built from
-  branch 4.1.
