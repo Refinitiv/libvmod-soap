@@ -4,7 +4,7 @@ varnishtest "SOAP: read namespace"
 server s1 {
         rxreq
         expect req.http.soap-ws-ns == "http://schemas.reuters.com/mytest"
-        expect req.http.content-length == 181
+        expect req.http.content-length == 215
         txresp -status 200
 } -start
 
@@ -14,17 +14,17 @@ varnish v1 -vcl+backend {
 
     sub vcl_recv
     {
-            set req.http.soap-ws-ns = soap.read_action();
+            set req.http.soap-ws-ns = soap.action_namespace();
     }
 } -start
 
 #start client
 client c1 {
         txreq -req POST -body {<?xml version="1.0" encoding="utf-8"?>
-        <Envelope xmlns:ooj="http://schemas.xmlsoap.org/soap/envelope/">
+        <Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+<Header><userIdentity/></Header><Body>
 <Test xmlns="http://schemas.reuters.com/mytest"/>
-</Body>
-</Envelope>}
+</Body></Envelope>}
         rxresp
         expect resp.status == 200
 } -run
