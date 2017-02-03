@@ -3,7 +3,7 @@ varnishtest "SOAP: read namespace"
 #start server
 server s1 {
         rxreq
-        expect req.http.soap-ws-ns == "http://schemas.reuters.com/mytest"
+        expect req.http.soap-ws-ns == "Test"
         expect req.http.content-length == 215
         txresp -status 200
 } -start
@@ -14,7 +14,7 @@ varnish v1 -vcl+backend {
 
     sub vcl_recv
     {
-            set req.http.soap-ws-ns = soap.action_namespace();
+            set req.http.soap-ws-ns = soap.action();
     }
 } -start
 
