@@ -11,6 +11,11 @@ DESCRIPTION
 
 $Event event_function
 
-$Function STRING read_action(PRIV_TASK)
+$Function STRING action(PRIV_TASK)
 
-Return namespace from 1st body's action
+Return name of SOAP body's action
+
+
+$Function STRING action_namespace(PRIV_TASK)
+
+Return namespace of SOAP body's action

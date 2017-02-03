@@ -69,9 +69,8 @@ static sess_record* init_sess_rec(VRT_CTX)
 
    rec->pool = pool;
    rec->ctx = ctx;
-
-   if (NULL == (rec->aggregated_context = apr_hash_make(rec->pool)))
-      goto E_x_i_t_;
+   rec->action = "none";
+   rec->action_namespace = "none";
 
    status = apr_pool_userdata_setn(rec, POOL_KEY, NULL, pool);
 
@@ -215,9 +214,22 @@ soap_get(struct vmod_priv *priv)
 /* 	return (p); */
 /* } */
 
-VCL_STRING vmod_read_action(VRT_CTX, struct vmod_priv *priv /* PRIV_TASK */)
+VCL_STRING vmod_action(VRT_CTX, struct vmod_priv *priv /* PRIV_TASK */)
 {
-    /* sess_record *r = init_sess_rec(ctx); */
-    /* process_soap_request(r); */
+    sess_record *r = init_sess_rec(ctx);
+    if(process_soap_request(r) == 0) {
+        return r->action;
+    }
     return "toto";
+    return "http://schemas.reuters.com/mytest";
+}
+
+VCL_STRING vmod_action_namespace(VRT_CTX, struct vmod_priv *priv /* PRIV_TASK */)
+{
+    sess_record *r = init_sess_rec(ctx);
+    if(process_soap_request(r) == 0) {
+        return r->action_namespace;
+    }
+    return "toto";
+    return "http://schemas.reuters.com/mytest";
 }
