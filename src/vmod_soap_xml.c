@@ -297,7 +297,7 @@ int parse_soap_envelope(sess_record* r, int request, unsigned long content_lengt
         if(sax_ctx.request_name)
         {
                 r->action = WS_Copy(r->ctx->ws, sax_ctx.request_name, strlen(sax_ctx.request_name) + 1);
-                r->action_namespace = WS_Copy(r->ctx->ws, sax_ctx.request_namespace, strlen(sax_ctx.request_name) + 1);
+                r->action_namespace = WS_Copy(r->ctx->ws, sax_ctx.request_namespace, strlen(sax_ctx.request_namespace) + 1);
                 /*
             if (cb->hp) {
                 status = cb->hp(sax_ctx.request_name, sax_ctx.request_namespace, sax_ctx.header, r);
