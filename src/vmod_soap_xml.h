@@ -28,6 +28,7 @@ typedef struct _sax_parser_ctx
 
     apr_array_header_t *parent_stack;
     apr_pool_t *pool;
+    struct ws *ws;
 
     const char* request_namespace;
     const char* request_name;

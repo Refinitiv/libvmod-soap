@@ -64,7 +64,7 @@ static void start_element_ns(void *ptr,
                     sax_ctx->soap_version = SOAP12;
                 else
                 {
-                    sax_ctx->error = "Invalid SOAP envelope namespace found";
+                    sax_ctx->error = WS_Printf(sax_ctx->ws, "Invalid SOAP Envelope's namespace <%s>.", URI);
                     xmlStopParser(xml_parser);
                     return;
                 }
@@ -72,7 +72,7 @@ static void start_element_ns(void *ptr,
             }
             else
             {
-                sax_ctx->error = "First element must be SOAP Envelope";
+                sax_ctx->error = WS_Printf(sax_ctx->ws, "First element must be SOAP Envelope (found <%s>).", localname);
                 xmlStopParser(xml_parser);
                 return;
             }
@@ -83,7 +83,7 @@ static void start_element_ns(void *ptr,
             else if (xmlStrEqual(localname, "Body") && xmlStrEqual(URI, soap_versions[sax_ctx->soap_version]))
                 sax_ctx->body = xml_parser->node;
             else {
-                sax_ctx->error = "Invalid SOAP element found";
+                sax_ctx->error = WS_Printf(sax_ctx->ws, "Invalid XML tag <%s> found (namespace: %s).", localname, URI);
                 xmlStopParser(xml_parser);
                 return;
             }
@@ -245,6 +245,7 @@ int parse_soap_envelope(sess_record* r, int request, unsigned long content_lengt
     xml_parser->_private = &sax_ctx;
     sax_ctx.pool = r->pool;
     sax_ctx.parent_stack = apr_array_make(r->pool, 16, sizeof(elem_info*));
+    sax_ctx.ws = r->ctx->ws;
 
     cb->soap_version = 0;
 

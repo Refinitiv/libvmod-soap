@@ -1,6 +1,7 @@
 #include "vmod_soap.h"
 #include "vmod_soap_xml.h"
 #include "vmod_soap_gzip.h"
+#include <syslog.h>
 
 /* -------------------------------------------------------------------------------------/
     store SOAP error
@@ -19,6 +20,8 @@ void add_soap_error(sess_record *r, int status, const char* fmt, ...)
     sei = (soap_error_info*)r->error_info;
     sei->ei.status = status;
     sei->ei.message = apr_pvsprintf(r->pool, fmt, args);
+    syslog(LOG_ERR, "libvmod-soap, V_xid:%u, SOAP: %s", r->ctx->sp->vxid, sei->ei.message);
+
     sei->ei.synth_error = synth_soap_fault;
     if (!sei->soap_version) sei->soap_version = SOAP11;
 
