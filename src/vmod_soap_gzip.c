@@ -54,7 +54,7 @@ int uninit_http_context(http_context **ctx)
 */
 int uncompress_body_part(z_stream *stream, body_part *compressed_body_part, body_part *uncompressed_body_part, apr_pool_t *pool)
 {
-    Bytef buf[BUFFER_SIZE*4];
+    Bytef buf[BUFFER_SIZE*8];
     Bytef *res_buf = 0;
     int res_len = 0;
     int sts = 0;
@@ -63,7 +63,7 @@ int uncompress_body_part(z_stream *stream, body_part *compressed_body_part, body
     while(stream->avail_in > 0)
     {
         stream->next_out = buf;
-        stream->avail_out = BUFFER_SIZE*4;
+        stream->avail_out = BUFFER_SIZE*8;
         int err = inflate(stream, Z_SYNC_FLUSH);
         if (err != Z_OK && err != Z_STREAM_END)
         {
