@@ -135,8 +135,9 @@ static void end_element_ns (void *ptr,
 /* -------------------------------------------------------------------------------------/
     Init default and custom SAX handlers
 */
-int init_soap_sax_handler()
+void init_xml()
 {
+    xmlInitParser();
     memset(&default_sax_handler, 0, sizeof(default_sax_handler));
     memset(&soap_sax_handler, 0, sizeof(soap_sax_handler));
     xmlSAX2InitDefaultSAXHandler(&default_sax_handler, 0);
@@ -144,8 +145,11 @@ int init_soap_sax_handler()
     soap_sax_handler.startElementNs = &start_element_ns;
     soap_sax_handler.endElementNs = &end_element_ns;
     soap_sax_handler.error = NULL;
+}
 
-    return 0;
+void clean_xml()
+{
+    xmlCleanupParser();
 }
 
 /* -------------------------------------------------------------------------------------/

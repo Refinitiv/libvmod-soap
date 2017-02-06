@@ -19,3 +19,8 @@ Return name of SOAP body's action
 $Function STRING action_namespace(PRIV_TASK)
 
 Return namespace of SOAP body's action
+
+
+$Function VOID add_namespace(PRIV_VCL, STRING, STRING)
+
+Add namespace into known namespaces (see `xpath_header` and `xpath_body`)

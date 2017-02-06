@@ -80,12 +80,29 @@ typedef struct _soapparse_cb {
 typedef struct sess sess;
 struct _error_info;
 
-typedef struct sess_record {
-    VRT_CTX;
-    apr_pool_t* pool;
-    const char* action;
-    const char* action_namespace;
-    struct _error_info *error_info;
+struct soap_namespace {
+        unsigned                        magic;
+#define PRIV_SOAP_NAMESPACE_MAGIC 0x5FFBCA91
+        const char* name;
+        const char* uri;
+	VSLIST_ENTRY(soap_namespace)	list;
+};
+
+struct priv_soap_vcl {
+        unsigned                        magic;
+#define PRIV_SOAP_VCL_MAGIC 0x5FF42842
+	VSLIST_HEAD(, soap_namespace)   namespaces;
+};
+
+typedef struct priv_soap_task {
+        unsigned magic;
+#define PRIV_SOAP_TASK_MAGIC 0x5FF52A40
+        VRT_CTX;
+        apr_pool_t* pool;
+        const char* action;
+        const char* action_namespace;
+        void* header;
+        struct _error_info *error_info;
 } sess_record;
 
 extern apr_pool_t *s_module_pool;

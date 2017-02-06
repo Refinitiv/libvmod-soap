@@ -32,6 +32,7 @@ typedef struct _sax_parser_ctx
 
     const char* request_namespace;
     const char* request_name;
+
     xmlNodePtr    header;
     xmlNodePtr    body;
     envelope_info buffer_info;
@@ -39,6 +40,7 @@ typedef struct _sax_parser_ctx
 
 int synth_soap_fault(sess_record *r);
 int parse_soap_envelope(sess_record* r, int request, unsigned long content_length, soapparse_cb* cb);
-int init_soap_sax_handler();
+void init_xml();
+void clean_xml();
 
 #endif

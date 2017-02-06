@@ -1,0 +1,46 @@
+varnishtest "SOAP: read several time the same message"
+
+#start server
+server s1 {
+        rxreq
+        expect req.http.soap-action == "Foo"
+        expect req.http.soap-action-ns == "http://schemas.reuters.com/bar"
+        txresp -status 200
+      
+        rxreq
+        expect req.http.soap-action == "Bar"
+        expect req.http.soap-action-ns == "http://schemas.reuters.com/foo"
+        txresp -status 200
+} -start
+
+#start varnish instance
+varnish v1 -vcl+backend {
+    import ${vmod_soap};
+
+    sub vcl_recv
+    {
+            set req.http.soap-action = soap.action();
+            set req.http.soap-action-ns = soap.action_namespace();
+    }
+} -start
+
+#start client
+client c1 {
+        timeout 8
+        txreq -req POST -body {<?xml version="1.0" encoding="utf-8"?>
+        <Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+<Header><userIdentity/></Header><Body>
+<Foo xmlns="http://schemas.reuters.com/bar"/>
+</Body></Envelope>}
+        rxresp
+        expect resp.status == 200
+
+        txreq -req POST -body {<?xml version="1.0" encoding="utf-8"?>
+        <Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+<Header><userIdentity/></Header><Body>
+<Bar xmlns="http://schemas.reuters.com/foo"/>
+</Body></Envelope>}
+        rxresp
+        expect resp.status == 200
+       
+} -run

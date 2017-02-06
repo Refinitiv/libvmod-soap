@@ -3,137 +3,86 @@
 
 #define POOL_KEY "VRN_IH_PK"
 
-static const char* s_init_error = "n/a";
-static int module_inited = 0;
-apr_pool_t* s_module_pool = 0;
-apr_hash_t* s_module_storage = NULL;
-apr_thread_mutex_t* s_module_mutex = NULL;
+static pthread_mutex_t  soap_mutex = PTHREAD_MUTEX_INITIALIZER;
+static int              refcount = 0;
+static apr_pool_t       *apr_pool = NULL;
 
 /* -------------------------------------------------------------------------------------/
-    init wsg
+    init module
 */
-#define init_r(r) routine=#r; if ((status = r)) goto E_x_i_t_;
-int init_wsg_module()
+static void init_apr()
 {
-    apr_status_t status = APR_SUCCESS;
-    const char* routine = "n/a";
+    AZ(apr_pool);
+    XXXAZ(apr_initialize());
+    XXXAZ(apr_pool_create(&apr_pool, NULL));
+}
 
-    // Initialize apr, main pool and storage
-    if (APR_SUCCESS ==(status  = apr_initialize()))
-        if (APR_SUCCESS ==(status = apr_pool_create(&s_module_pool, NULL)))
-            if (NULL != (s_module_storage = apr_hash_make(s_module_pool)))
-                apr_thread_mutex_create(&s_module_mutex, APR_THREAD_MUTEX_DEFAULT, s_module_pool);
-
-    if (s_module_mutex == NULL)
-    {
-        s_init_error = "Failed to initialize APR or main pool";
-        if (!status) status = APR_EGENERAL;
-        goto E_x_i_t_;
-    }
-
-    xmlInitParser();
-
-    init_r(init_soap_sax_handler());
-
-E_x_i_t_:
-    if (status) {
-        syslog(LOG_EMERG, "WSG module initialization failed: routine:'%s',rc=%d,message:'%s'", routine, status, s_init_error); 
-    }
-    return status;
+static void clean_apr()
+{
+    apr_pool = NULL;
+    apr_terminate();
 }
 
 /* -------------------------------------------------------------------------------------/
+    init vcl
+*/
+static void clean_vcl(void *priv)
+{
+    struct priv_soap_vcl *priv_soap_vcl;
+    struct soap_namespace *ns, *ns2;
+
+    CAST_OBJ_NOTNULL(priv_soap_vcl, priv, PRIV_SOAP_VCL_MAGIC);
+
+    VSLIST_FOREACH_SAFE(ns, &priv_soap_vcl->namespaces, list, ns2) {
+        VSLIST_REMOVE_HEAD(&priv_soap_vcl->namespaces, list);
+        FREE_OBJ(ns);
+    }
+
+    FREE_OBJ(priv_soap_vcl);
+}
+
+static struct priv_soap_vcl* init_vcl()
+{
+    struct priv_soap_vcl *priv_soap_vcl;
+
+    ALLOC_OBJ(priv_soap_vcl, PRIV_SOAP_VCL_MAGIC);
+    XXXAN(priv_soap_vcl);
+
+    VSLIST_INIT(&priv_soap_vcl->namespaces);
+    return priv_soap_vcl;
+}
+
+/* ------------------------------------------------------------------/
     initialize session
 */
-static sess_record* init_sess_rec(VRT_CTX)
+static struct priv_soap_task* init_task(VRT_CTX)
 {
-   void* key = 0;
-   apr_pool_t* pool = NULL;
-   sess_record* rec = NULL;
-   apr_status_t status = APR_EINIT;
+    struct priv_soap_task *priv_soap_task;
 
-   if (!ctx)
-      goto E_x_i_t_;
+    ALLOC_OBJ(priv_soap_task, PRIV_SOAP_TASK_MAGIC);
+    AN(priv_soap_task);
 
-   apr_thread_mutex_lock(s_module_mutex);
-
-   status = apr_pool_create(&pool, s_module_pool);
-
-   if (APR_SUCCESS != status) // failed to create pool
-      goto E_x_i_t_;
-
-   rec = (sess_record*)apr_pcalloc(pool, sizeof(sess_record));
-
-   if (!rec)
-      goto E_x_i_t_;
-
-   rec->pool = pool;
-   rec->ctx = ctx;
-   rec->action = "none";
-   rec->action_namespace = "none";
-
-   status = apr_pool_userdata_setn(rec, POOL_KEY, NULL, pool);
-
-   if (APR_SUCCESS != status)
-      goto E_x_i_t_;
-
-   key = apr_palloc(pool, sizeof(ctx));
-   if (NULL == key)
-    goto E_x_i_t_;
-
-   memcpy(key, &ctx, sizeof(ctx));
-   apr_hash_set(s_module_storage, key, sizeof(ctx), pool);
-
-   status = APR_SUCCESS;
-    
-   goto E_x_i_t_1;
-   
-E_x_i_t_:
-   if (NULL != pool)
-      apr_pool_destroy(pool);
-
-E_x_i_t_1:
-   apr_thread_mutex_unlock(s_module_mutex);
-   return rec;
+    XXXAZ(apr_pool_create(&priv_soap_task->pool, apr_pool));
+    priv_soap_task->ctx = ctx;
+    priv_soap_task->action = NULL;
+    priv_soap_task->action_namespace = NULL;
+    return priv_soap_task;
 }
 
-
-/* -------------------------------------------------------------------------------------/
-    get current session object
-*/
-static sess_record* get_sess_rec(const sess* s)
-{
-   apr_pool_t* pool = NULL;
-   sess_record* rec = NULL;
-
-   apr_thread_mutex_lock(s_module_mutex);
-
-   pool = (apr_pool_t*)apr_hash_get(s_module_storage, &s, sizeof(sess*));
-
-   apr_thread_mutex_unlock(s_module_mutex);
-
-   if (NULL != pool)
-      apr_pool_userdata_get((void**)&rec, POOL_KEY, pool);
-
-   return rec;
-}
-
-/* -------------------------------------------------------------------------------------/
+/* -----------------------------------------------------------------/
     destroy session
 */
-static void destroy_sess(const sess* s)
+static void clean_task(void *priv)
 {
-   apr_pool_t* pool = NULL;
-   apr_thread_mutex_lock(s_module_mutex);
+   struct priv_soap_task *priv_soap_task;
 
-   pool = (apr_pool_t*)apr_hash_get(s_module_storage, &s, sizeof(s));
+   AN(priv);
+   CAST_OBJ_NOTNULL(priv_soap_task, priv, PRIV_SOAP_TASK_MAGIC);
 
-   if(NULL != pool) {
-      apr_hash_set(s_module_storage, &s, sizeof(s), NULL);
-      apr_pool_destroy(pool);
-   }
+   AN(priv_soap_task->pool);
+   apr_pool_destroy(priv_soap_task->pool);
 
-   apr_thread_mutex_unlock(s_module_mutex);
+   FREE_OBJ(priv_soap_task);
 }
 
 /*
@@ -142,23 +91,36 @@ static void destroy_sess(const sess* s)
  *
  */
 int __match_proto__(vmod_event_f)
-event_function(VRT_CTX, struct vmod_priv *priv, enum vcl_event_e e)
+event_function(VRT_CTX, struct vmod_priv *priv /* PRIV_VCL */, enum vcl_event_e e)
 {
+    struct priv_soap_vcl *priv_soap_vcl;
+
+    CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
+
     switch (e) {
     case VCL_EVENT_LOAD:
-        if(module_inited++ == 0) {
-            return init_wsg_module();
+	AZ(pthread_mutex_lock(&soap_mutex));
+        if(0 == refcount++) {
+            init_xml();
+            init_apr();
         }
+	AZ(pthread_mutex_unlock(&soap_mutex));
+
+        priv_soap_vcl = init_vcl();
+        priv->priv = priv_soap_vcl;
+        priv->free = clean_vcl;
         break;
     case VCL_EVENT_WARM:
         break;
     case VCL_EVENT_COLD:
         break;
     case VCL_EVENT_DISCARD:
-        if(--module_inited == 0) {
-            xmlCleanupParser();
-            apr_terminate();
+	AZ(pthread_mutex_lock(&soap_mutex));
+        if(0 == --refcount) {
+            clean_xml();
+            clean_apr();
         }
+	AZ(pthread_mutex_unlock(&soap_mutex));
         break;
     default:
         return (0);
@@ -166,70 +128,49 @@ event_function(VRT_CTX, struct vmod_priv *priv, enum vcl_event_e e)
     return (0);
 }
 
-struct vmod_soap {
-	unsigned magic;
-#define VMOD_SOAP_MAGIC 0x5FF42842
-        
-};
-/*
-static void
-soap_free(void *p)
+sess_record* priv_soap_get(VRT_CTX, struct vmod_priv *priv /* PRIV_TASK */)
 {
-	struct vmod_soap *soap;
+        struct priv_soap_task *priv_soap_task;
 
-	CAST_OBJ_NOTNULL(soap, p, VMOD_SOAP_MAGIC);
-	FREE_OBJ(soap);
-}
-
-static struct vmod_soap *
-soap_get(struct vmod_priv *priv)
-{
-	struct vmod_soap *soap;
-
+        CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
         AN(priv);
-        get_sess_rec();
-        init_sess_rec();
-        destroy_sess();
-	if (priv->priv == NULL) {
-		ALLOC_OBJ(soap, VMOD_SOAP_MAGIC);
-		AN(soap);
-		priv->priv = soap;
-		priv->free = soap_free;
-	} else {
-		CAST_OBJ_NOTNULL(soap, priv->priv, VMOD_SOAP_MAGIC);
+        if(priv->priv == NULL) {
+            priv->priv = init_task(ctx);
+            priv->free = clean_task;
         }
-
-	return (soap);
+        CAST_OBJ_NOTNULL(priv_soap_task, priv->priv, PRIV_SOAP_TASK_MAGIC);
+        return (priv_soap_task);
 }
-*/
-/* VCL_STRING */
-/* vmod_read_action(VRT_CTX, struct vmod_priv *priv /\* PRIV_TASK *\/) */
-/* { */
-/*         struct vmod_soap * soap = soap_get(priv); */
-
-/* 	CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC); */
-/*         if(soap->request == NULL) { */
-/*                 soap_read_request(ctx, soap) */
-/*         } */
-/* 	return (p); */
-/* } */
 
 VCL_STRING vmod_action(VRT_CTX, struct vmod_priv *priv /* PRIV_TASK */)
 {
-    sess_record *r = init_sess_rec(ctx);
-    if(process_soap_request(r) == 0) {
-        return r->action;
-    }
-    return "toto";
-    return "http://schemas.reuters.com/mytest";
+        struct priv_soap_task *r = priv_soap_get(ctx, priv);
+        if(process_soap_request(r) == 0) {
+                return r->action;
+        }
+        return "TODO: ERROR";
 }
 
 VCL_STRING vmod_action_namespace(VRT_CTX, struct vmod_priv *priv /* PRIV_TASK */)
 {
-    sess_record *r = init_sess_rec(ctx);
-    if(process_soap_request(r) == 0) {
-        return r->action_namespace;
-    }
-    return "toto";
-    return "http://schemas.reuters.com/mytest";
+        struct priv_soap_task *r = priv_soap_get(ctx, priv);
+        if(process_soap_request(r) == 0) {
+                return r->action_namespace;
+        }
+        return "TODO: ERROR";
+}
+
+void vmod_add_namespace(VRT_CTX, struct vmod_priv *priv /* PRIV_VCL */, const char* name, const char* uri)
+{
+    struct priv_soap_vcl        *priv_soap_vcl;
+    struct soap_namespace       *namespace;
+
+    AN(priv);
+    CAST_OBJ_NOTNULL(priv_soap_vcl, priv->priv, PRIV_SOAP_VCL_MAGIC);
+    ALLOC_OBJ(namespace, PRIV_SOAP_NAMESPACE_MAGIC);
+    AN(namespace);
+
+    namespace->name = name;
+    namespace->uri = uri;
+    VSLIST_INSERT_HEAD(&priv_soap_vcl->namespaces, namespace, list);
 }
