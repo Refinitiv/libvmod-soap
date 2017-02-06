@@ -10,7 +10,7 @@ import soap;
 DESCRIPTION
 ===========
 
-SOAP vmodule for Varnish 4 and 5.
+SOAP vmodule for Varnish 4 and 5. libvmod-soap aims to read SOAP basic elements in HTTP request body (action, uri, and/or using xpath) and allow users to do routing in VCL based on these values.
 
 FUNCTIONS
 =========
