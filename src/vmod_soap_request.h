@@ -2,8 +2,8 @@
 #define __VMOD_SOAP_REQUEST_H__
 
 typedef struct body_part {
-    char *data;
-    int length;
+	char *data;
+	int length;
 } body_part;
 
 struct soap_req_http {

@@ -42,89 +42,89 @@ v1f_read(const struct vfp_ctx *vc, struct http_conn *htc, void *d, ssize_t len)
 
 
 /* -------------------------------------------------------------------------------------/
-    Read body part from varnish pipeline and uncompress the data if necessary
+   Read body part from varnish pipeline and uncompress the data if necessary
 */
 int read_body_part(struct soap_req_http *req_http, int bytes_left, body_part *uncompressed_body_part)
 {
-    char buf[BUFFER_SIZE]; // TODO: read varnish gzip buffer size?
-    body_part *read_part;
-    if (req_http->encoding == CE_UNKNOWN)
-    {
-        return -1;
-    }
-    int bytes_to_read = bytes_left > BUFFER_SIZE ? BUFFER_SIZE : bytes_left;
-    int bytes_read = v1f_read(req_http->ctx->req->htc->vfc, req_http->ctx->req->htc, buf, bytes_to_read);
-    if (bytes_read <= 0)
-    {
-        return bytes_read;
-    }
-    read_part = (body_part*)apr_palloc(req_http->pool, sizeof(body_part));
-    if (read_part == 0)
-    {
-        return -1;
-    }
-    read_part->length = bytes_read;
-    read_part->data = apr_pmemdup(req_http->pool, buf, bytes_read);
-    APR_ARRAY_PUSH(req_http->bodyparts, body_part*) = read_part;
-    if(uncompressed_body_part == NULL)
-    {
-         return bytes_read;
-    }
-    else if (req_http->encoding == CE_NONE)
-    {
-        memcpy(uncompressed_body_part, read_part, sizeof(body_part));
-        return bytes_read;
-    }
-    else if (uncompress_body_part(req_http->compression_stream, read_part, uncompressed_body_part, req_http->pool) == 0)
-    {
-        return bytes_read;
-    }
-    return -1;
+	char buf[BUFFER_SIZE]; // TODO: read varnish gzip buffer size?
+	body_part *read_part;
+	if (req_http->encoding == CE_UNKNOWN)
+	{
+		return -1;
+	}
+	int bytes_to_read = bytes_left > BUFFER_SIZE ? BUFFER_SIZE : bytes_left;
+	int bytes_read = v1f_read(req_http->ctx->req->htc->vfc, req_http->ctx->req->htc, buf, bytes_to_read);
+	if (bytes_read <= 0)
+	{
+		return bytes_read;
+	}
+	read_part = (body_part*)apr_palloc(req_http->pool, sizeof(body_part));
+	if (read_part == 0)
+	{
+		return -1;
+	}
+	read_part->length = bytes_read;
+	read_part->data = apr_pmemdup(req_http->pool, buf, bytes_read);
+	APR_ARRAY_PUSH(req_http->bodyparts, body_part*) = read_part;
+	if(uncompressed_body_part == NULL)
+	{
+		return bytes_read;
+	}
+	else if (req_http->encoding == CE_NONE)
+	{
+		memcpy(uncompressed_body_part, read_part, sizeof(body_part));
+		return bytes_read;
+	}
+	else if (uncompress_body_part(req_http->compression_stream, read_part, uncompressed_body_part, req_http->pool) == 0)
+	{
+		return bytes_read;
+	}
+	return -1;
 }
 
 /* -------------------------------------------------------------------------------------/
-    Convert set of body parts into one lineary arranged array
+   Convert set of body parts into one lineary arranged array
 */
 int convert_parts(struct soap_req_http *req_http, apr_array_header_t *parts, char **buf)
 {
-    int i;
-    int length = 0;
-    for (i = 0; i < parts->nelts; i++)
-    {
-        length += APR_ARRAY_IDX(parts, i, body_part*)->length;
-    }
-    *buf = (char*)apr_palloc(req_http->pool, length);
-    int offset = 0;
-    for (i = 0; i < parts->nelts; i++)
-    {
-        memcpy(*buf + offset, APR_ARRAY_IDX(parts, i, body_part*)->data, APR_ARRAY_IDX(parts, i, body_part*)->length);
-        offset += APR_ARRAY_IDX(parts, i, body_part*)->length;
-    }
-    return length;
+	int i;
+	int length = 0;
+	for (i = 0; i < parts->nelts; i++)
+	{
+		length += APR_ARRAY_IDX(parts, i, body_part*)->length;
+	}
+	*buf = (char*)apr_palloc(req_http->pool, length);
+	int offset = 0;
+	for (i = 0; i < parts->nelts; i++)
+	{
+		memcpy(*buf + offset, APR_ARRAY_IDX(parts, i, body_part*)->data, APR_ARRAY_IDX(parts, i, body_part*)->length);
+		offset += APR_ARRAY_IDX(parts, i, body_part*)->length;
+	}
+	return length;
 }
 
 /* -----------------------------------------------------------------
---------------------/
-    Return data array back to varnish internal pipeline
+   --------------------/
+   Return data array back to varnish internal pipeline
 */
 void return_buffer(struct soap_req_http *req_http, struct http_conn* htc, char* base, char* end)
 {
-    int size = end - base;
-    char *new_content;
+	int size = end - base;
+	char *new_content;
 
-    if (htc->pipeline_b != 0)
-    {
-        size += htc->pipeline_e - htc->pipeline_b;
-        new_content = (char*)apr_palloc(req_http->pool, size);
-        memcpy(new_content, base, end - base);
-        memcpy(new_content + (end - base), htc->pipeline_b, htc->pipeline_e - htc->pipeline_b);
-    }
-    else
-    {
-        new_content = base;
-    }
-    htc->pipeline_b = new_content;
-    htc->pipeline_e = new_content + size;
+	if (htc->pipeline_b != 0)
+	{
+		size += htc->pipeline_e - htc->pipeline_b;
+		new_content = (char*)apr_palloc(req_http->pool, size);
+		memcpy(new_content, base, end - base);
+		memcpy(new_content + (end - base), htc->pipeline_b, htc->pipeline_e - htc->pipeline_b);
+	}
+	else
+	{
+		new_content = base;
+	}
+	htc->pipeline_b = new_content;
+	htc->pipeline_e = new_content + size;
 }
 
 void init_req_http(struct soap_req_http *req_http)
@@ -136,7 +136,7 @@ void init_req_http(struct soap_req_http *req_http)
 }
 
 /* -------------------------------------------------------------------------------------/
-    Return set of body parts back to varnish internal pipeline
+   Return set of body parts back to varnish internal pipeline
 */
 void clean_req_http(struct soap_req_http *req_http)
 {

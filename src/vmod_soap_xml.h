@@ -6,15 +6,15 @@
 
 struct sess_record;
 struct error_info {
-    int status;
-    const char *message;
-    int (*synth_error)(struct sess_record *r);
+	int status;
+	const char *message;
+	int (*synth_error)(struct sess_record *r);
 };
 
 struct soap_error_info
 {
-    struct error_info ei;
-    int soap_version;
+	struct error_info ei;
+	int soap_version;
 };
 
 typedef struct soap_req_xml {

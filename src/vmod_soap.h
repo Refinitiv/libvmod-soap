@@ -39,17 +39,17 @@ struct soap_req_http;
 struct soap_req_xml;
 
 struct soap_namespace {
-        unsigned                        magic;
+	unsigned			magic;
 #define PRIV_SOAP_NAMESPACE_MAGIC 0x5FFBCA91
-        const char* prefix;
-        const char* uri;
+	const char* prefix;
+	const char* uri;
 	VSLIST_ENTRY(soap_namespace)	list;
 };
 
 struct priv_soap_vcl {
-        unsigned                        magic;
+	unsigned			magic;
 #define PRIV_SOAP_VCL_MAGIC 0x5FF42842
-	VSLIST_HEAD(, soap_namespace)   namespaces;
+	VSLIST_HEAD(, soap_namespace)	namespaces;
 };
 
 typedef struct priv_soap_task {

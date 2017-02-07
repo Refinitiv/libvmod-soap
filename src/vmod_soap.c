@@ -3,9 +3,9 @@
 
 #define POOL_KEY "VRN_IH_PK"
 
-static pthread_mutex_t  soap_mutex = PTHREAD_MUTEX_INITIALIZER;
-static int              refcount = 0;
-static apr_pool_t       *apr_pool = NULL;
+static pthread_mutex_t	soap_mutex = PTHREAD_MUTEX_INITIALIZER;
+static int		refcount = 0;
+static apr_pool_t	*apr_pool = NULL;
 
 enum soap_state {
 	NONE = 0,
@@ -16,52 +16,52 @@ enum soap_state {
 };
 
 /* -------------------------------------------------------------------------------------/
-    init module
+   init module
 */
 static void init_apr()
 {
-    AZ(apr_pool);
-    XXXAZ(apr_initialize());
-    XXXAZ(apr_pool_create(&apr_pool, NULL));
+	AZ(apr_pool);
+	XXXAZ(apr_initialize());
+	XXXAZ(apr_pool_create(&apr_pool, NULL));
 }
 
 static void clean_apr()
 {
-    apr_pool = NULL;
-    apr_terminate();
+	apr_pool = NULL;
+	apr_terminate();
 }
 
 /* -------------------------------------------------------------------------------------/
-    init vcl
+   init vcl
 */
 static void clean_vcl(void *priv)
 {
-    struct priv_soap_vcl *priv_soap_vcl;
-    struct soap_namespace *ns, *ns2;
+	struct priv_soap_vcl *priv_soap_vcl;
+	struct soap_namespace *ns, *ns2;
 
-    CAST_OBJ_NOTNULL(priv_soap_vcl, priv, PRIV_SOAP_VCL_MAGIC);
+	CAST_OBJ_NOTNULL(priv_soap_vcl, priv, PRIV_SOAP_VCL_MAGIC);
 
-    VSLIST_FOREACH_SAFE(ns, &priv_soap_vcl->namespaces, list, ns2) {
-        VSLIST_REMOVE_HEAD(&priv_soap_vcl->namespaces, list);
-        FREE_OBJ(ns);
-    }
+	VSLIST_FOREACH_SAFE(ns, &priv_soap_vcl->namespaces, list, ns2) {
+		VSLIST_REMOVE_HEAD(&priv_soap_vcl->namespaces, list);
+		FREE_OBJ(ns);
+	}
 
-    FREE_OBJ(priv_soap_vcl);
+	FREE_OBJ(priv_soap_vcl);
 }
 
 static struct priv_soap_vcl* init_vcl()
 {
-    struct priv_soap_vcl *priv_soap_vcl;
+	struct priv_soap_vcl *priv_soap_vcl;
 
-    ALLOC_OBJ(priv_soap_vcl, PRIV_SOAP_VCL_MAGIC);
-    XXXAN(priv_soap_vcl);
+	ALLOC_OBJ(priv_soap_vcl, PRIV_SOAP_VCL_MAGIC);
+	XXXAN(priv_soap_vcl);
 
-    VSLIST_INIT(&priv_soap_vcl->namespaces);
-    return priv_soap_vcl;
+	VSLIST_INIT(&priv_soap_vcl->namespaces);
+	return priv_soap_vcl;
 }
 
 /* ------------------------------------------------------------------/
-    initialize session
+   initialize session
 */
 static struct priv_soap_task* init_task(VRT_CTX)
 {
@@ -83,7 +83,7 @@ static struct priv_soap_task* init_task(VRT_CTX)
 }
 
 /* -----------------------------------------------------------------/
-    destroy session
+   destroy session
 */
 static void clean_task(void *priv)
 {
@@ -162,95 +162,95 @@ int process_request(struct priv_soap_task *task, enum soap_state state)
  *
  */
 int __match_proto__(vmod_event_f)
-event_function(VRT_CTX, struct vmod_priv *priv /* PRIV_VCL */, enum vcl_event_e e)
+	event_function(VRT_CTX, struct vmod_priv *priv /* PRIV_VCL */, enum vcl_event_e e)
 {
-    struct priv_soap_vcl *priv_soap_vcl;
+	struct priv_soap_vcl *priv_soap_vcl;
 
-    CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
+	CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
 
-    switch (e) {
-    case VCL_EVENT_LOAD:
-	AZ(pthread_mutex_lock(&soap_mutex));
-        if(0 == refcount++) {
-            init_xml();
-            init_apr();
-        }
-	AZ(pthread_mutex_unlock(&soap_mutex));
+	switch (e) {
+	case VCL_EVENT_LOAD:
+		AZ(pthread_mutex_lock(&soap_mutex));
+		if(0 == refcount++) {
+			init_xml();
+			init_apr();
+		}
+		AZ(pthread_mutex_unlock(&soap_mutex));
 
-        priv_soap_vcl = init_vcl();
-        priv->priv = priv_soap_vcl;
-        priv->free = clean_vcl;
-        break;
-    case VCL_EVENT_WARM:
-        break;
-    case VCL_EVENT_COLD:
-        break;
-    case VCL_EVENT_DISCARD:
-	AZ(pthread_mutex_lock(&soap_mutex));
-        if(0 == --refcount) {
-            clean_xml();
-            clean_apr();
-        }
-	AZ(pthread_mutex_unlock(&soap_mutex));
-        break;
-    default:
-        return (0);
-    }
-    return (0);
+		priv_soap_vcl = init_vcl();
+		priv->priv = priv_soap_vcl;
+		priv->free = clean_vcl;
+		break;
+	case VCL_EVENT_WARM:
+		break;
+	case VCL_EVENT_COLD:
+		break;
+	case VCL_EVENT_DISCARD:
+		AZ(pthread_mutex_lock(&soap_mutex));
+		if(0 == --refcount) {
+			clean_xml();
+			clean_apr();
+		}
+		AZ(pthread_mutex_unlock(&soap_mutex));
+		break;
+	default:
+		return (0);
+	}
+	return (0);
 }
 
 sess_record* priv_soap_get(VRT_CTX, struct vmod_priv *priv /* PRIV_TASK */)
 {
-        struct priv_soap_task *priv_soap_task;
+	struct priv_soap_task *priv_soap_task;
 
-        CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
-        AN(priv);
-        if(priv->priv == NULL) {
-            priv->priv = init_task(ctx);
-            priv->free = clean_task;
-        }
-        CAST_OBJ_NOTNULL(priv_soap_task, priv->priv, PRIV_SOAP_TASK_MAGIC);
-        return (priv_soap_task);
+	CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
+	AN(priv);
+	if(priv->priv == NULL) {
+		priv->priv = init_task(ctx);
+		priv->free = clean_task;
+	}
+	CAST_OBJ_NOTNULL(priv_soap_task, priv->priv, PRIV_SOAP_TASK_MAGIC);
+	return (priv_soap_task);
 }
 
 VCL_STRING __match_proto__(td_soap_action)
-vmod_action(VRT_CTX, struct vmod_priv *priv /* PRIV_TASK */)
+	vmod_action(VRT_CTX, struct vmod_priv *priv /* PRIV_TASK */)
 {
-        struct priv_soap_task *soap_task = priv_soap_get(ctx, priv);
-        if(process_request(soap_task, HEADER) == 0) {
-                return (soap_task->req_xml->action_name);
-        }
-        return ("TODO: ERROR");
+	struct priv_soap_task *soap_task = priv_soap_get(ctx, priv);
+	if(process_request(soap_task, HEADER) == 0) {
+		return (soap_task->req_xml->action_name);
+	}
+	return ("TODO: ERROR");
 }
 
 VCL_STRING __match_proto__(td_soap_action_namespace)
-vmod_action_namespace(VRT_CTX, struct vmod_priv *priv /* PRIV_TASK */)
+	vmod_action_namespace(VRT_CTX, struct vmod_priv *priv /* PRIV_TASK */)
 {
-        struct priv_soap_task *soap_task = priv_soap_get(ctx, priv);
-        if(process_request(soap_task, HEADER) == 0) {
-                return (soap_task->req_xml->action_namespace);
-        }
-        return ("TODO: ERROR");
+	struct priv_soap_task *soap_task = priv_soap_get(ctx, priv);
+	if(process_request(soap_task, HEADER) == 0) {
+		return (soap_task->req_xml->action_namespace);
+	}
+	return ("TODO: ERROR");
 }
 
 VCL_VOID __match_proto__(td_soap_add_namespace)
-vmod_add_namespace(VRT_CTX, struct vmod_priv *priv /* PRIV_VCL */, VCL_STRING prefix, VCL_STRING uri)
+	vmod_add_namespace(VRT_CTX, struct vmod_priv *priv /* PRIV_VCL */, VCL_STRING prefix, VCL_STRING uri)
 {
-    struct priv_soap_vcl        *priv_soap_vcl;
-    struct soap_namespace       *namespace;
+	struct priv_soap_vcl	    *priv_soap_vcl;
+	struct soap_namespace	    *namespace;
 
-    AN(priv);
-    CAST_OBJ_NOTNULL(priv_soap_vcl, priv->priv, PRIV_SOAP_VCL_MAGIC);
-    ALLOC_OBJ(namespace, PRIV_SOAP_NAMESPACE_MAGIC);
-    AN(namespace);
+	AN(priv);
+	CAST_OBJ_NOTNULL(priv_soap_vcl, priv->priv, PRIV_SOAP_VCL_MAGIC);
+	ALLOC_OBJ(namespace, PRIV_SOAP_NAMESPACE_MAGIC);
+	AN(namespace);
 
-    namespace->prefix = prefix;
-    namespace->uri = uri;
-    VSLIST_INSERT_HEAD(&priv_soap_vcl->namespaces, namespace, list);
+	namespace->prefix = prefix;
+	namespace->uri = uri;
+	VSLIST_INSERT_HEAD(&priv_soap_vcl->namespaces, namespace, list);
 }
 
 VCL_STRING __match_proto__(td_soap_xpath_header)
-vmod_xpath_header(VRT_CTX, struct vmod_priv *priv_vcl /* PRIV_VCL */, struct vmod_priv *priv_task /* PRIV_TASK */, VCL_STRING xpath)
+	vmod_xpath_header(VRT_CTX, struct vmod_priv *priv_vcl /* PRIV_VCL */, struct vmod_priv *priv_task /* PRIV_TASK */, VCL_STRING xpath)
 {
 	struct priv_soap_vcl *soap_vcl;;
 	struct priv_soap_task *soap_task;
@@ -268,13 +268,13 @@ vmod_xpath_header(VRT_CTX, struct vmod_priv *priv_vcl /* PRIV_VCL */, struct vmo
 }
 
 VCL_STRING __match_proto__(td_soap_xpath_body)
-vmod_xpath_body(VRT_CTX, struct vmod_priv *priv_vcl /* PRIV_VCL */, struct vmod_priv *priv_task /* PRIV_TASK */, VCL_STRING xpath)
+	vmod_xpath_body(VRT_CTX, struct vmod_priv *priv_vcl /* PRIV_VCL */, struct vmod_priv *priv_task /* PRIV_TASK */, VCL_STRING xpath)
 {
 	return ("");
 }
 
 VCL_VOID __match_proto__(td_soap_synthetic)
-vmod_synthetic(VRT_CTX, struct vmod_priv *priv_task /* PRIV_TASK */, VCL_INT soap_code, VCL_STRING soap_message)
+	vmod_synthetic(VRT_CTX, struct vmod_priv *priv_task /* PRIV_TASK */, VCL_INT soap_code, VCL_STRING soap_message)
 {
 	struct priv_soap_task *priv_soap_task;
 
