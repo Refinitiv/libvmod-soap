@@ -2,51 +2,34 @@
 #include "vmod_soap_http.h"
 #include "vmod_soap_gzip.h"
 
-/* -------------------------------------------------------------------------------------/
-    Init HTTP context with certain compression type
+/* ------------------------------------------------------/
+    Init HTTP context with encoding type
 */
-int init_http_context(http_context **ctx, enum ce_type compression ,apr_pool_t *pool)
+void init_gzip(struct soap_req_http *req_http)
 {
-    int sts = 1;
-    *ctx = (http_context*)apr_palloc(pool, sizeof(http_context));
-    if(*ctx == NULL)
-          return sts;
-    (*ctx)->body = apr_array_make(pool, 16, sizeof(body_part*));
-    if( (*ctx)->body == NULL)
-          return sts;
-    (*ctx)->pool = pool;
-    (*ctx)->compression = compression;
-    int init_flags = MAX_WBITS;
-    switch (compression)
-    {
-        case CE_GZIP:
-            init_flags += 16;
-        case CE_DEFLATE:
-            (*ctx)->compression_stream = (z_stream*)apr_pcalloc(pool, sizeof(z_stream));
-            sts = inflateInit2((*ctx)->compression_stream, init_flags);
-            break;
-        default: 
-            sts = 0;
-            break;
-    }    
-    return sts;
+	int init_flags = MAX_WBITS;
+	switch (req_http->encoding) {
+	case CE_GZIP:
+		init_flags += 16;
+	case CE_DEFLATE:
+		req_http->compression_stream = (z_stream*)apr_pcalloc(req_http->pool, sizeof(z_stream));
+		XXXAZ(inflateInit2(req_http->compression_stream, init_flags));
+		break;
+	default:
+		req_http->compression_stream = NULL;
+		break;
+	}
 }
 
-/* -------------------------------------------------------------------------------------/
+/* ----------------------------------------------------/
     HTTP context cleanup
 */
-int uninit_http_context(http_context **ctx)
+void clean_gzip(struct soap_req_http *req_http)
 {
-    if (*ctx == 0)
-    {
-        return 0;
-    }
-    if ((*ctx)->compression != CE_NONE)
-    {
-        inflateEnd((*ctx)->compression_stream);
-    }
-    *ctx = 0;
-    return 0;
+	AN(req_http);
+	if (req_http->encoding != CE_NONE) {
+		inflateEnd(req_http->compression_stream);
+	}
 }
 
 /* -------------------------------------------------------------------------------------/

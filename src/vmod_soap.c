@@ -7,6 +7,14 @@ static pthread_mutex_t  soap_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int              refcount = 0;
 static apr_pool_t       *apr_pool = NULL;
 
+enum soap_state {
+	NONE = 0,
+	INIT,
+	HEADER,
+	BODY,
+	DONE
+};
+
 /* -------------------------------------------------------------------------------------/
     init module
 */
@@ -57,16 +65,21 @@ static struct priv_soap_vcl* init_vcl()
 */
 static struct priv_soap_task* init_task(VRT_CTX)
 {
-    struct priv_soap_task *priv_soap_task;
+	struct priv_soap_task *priv_soap_task;
 
-    ALLOC_OBJ(priv_soap_task, PRIV_SOAP_TASK_MAGIC);
-    AN(priv_soap_task);
+	ALLOC_OBJ(priv_soap_task, PRIV_SOAP_TASK_MAGIC);
+	AN(priv_soap_task);
 
-    XXXAZ(apr_pool_create(&priv_soap_task->pool, apr_pool));
-    priv_soap_task->ctx = ctx;
-    priv_soap_task->action = NULL;
-    priv_soap_task->action_namespace = NULL;
-    return priv_soap_task;
+	priv_soap_task->ctx = ctx;
+
+	XXXAZ(apr_pool_create(&priv_soap_task->pool, apr_pool));
+
+	ALLOC_OBJ(priv_soap_task->req_http, SOAP_REQ_HTTP_MAGIC);
+	XXXAN(priv_soap_task->req_http);
+
+	ALLOC_OBJ(priv_soap_task->req_xml, SOAP_REQ_XML_MAGIC);
+	XXXAN(priv_soap_task->req_xml);
+	return priv_soap_task;
 }
 
 /* -----------------------------------------------------------------/
@@ -74,15 +87,73 @@ static struct priv_soap_task* init_task(VRT_CTX)
 */
 static void clean_task(void *priv)
 {
-   struct priv_soap_task *priv_soap_task;
+	struct priv_soap_task *priv_soap_task;
 
-   AN(priv);
-   CAST_OBJ_NOTNULL(priv_soap_task, priv, PRIV_SOAP_TASK_MAGIC);
+	AN(priv);
+	CAST_OBJ_NOTNULL(priv_soap_task, priv, PRIV_SOAP_TASK_MAGIC);
 
-   AN(priv_soap_task->pool);
-   apr_pool_destroy(priv_soap_task->pool);
+	clean_req_xml(priv_soap_task->req_xml);
+	priv_soap_task->req_xml = NULL;
 
-   FREE_OBJ(priv_soap_task);
+	clean_req_http(priv_soap_task->req_http);
+	priv_soap_task->req_http = NULL;
+
+	AN(priv_soap_task->pool);
+	apr_pool_destroy(priv_soap_task->pool);
+
+	FREE_OBJ(priv_soap_task);
+}
+
+int process_request(struct priv_soap_task *task, enum soap_state state)
+{
+	while (task->state < state) {
+		switch (task->state) {
+		case INIT:  // init
+			task->req_http->pool = task->pool;
+			task->req_http->ctx = task->ctx;
+			init_req_http(task->req_http);
+
+			init_gzip(task->req_http);
+
+			task->req_xml->pool = task->pool;
+			task->req_xml->ctx = task->ctx;
+			init_req_xml(task->req_xml);
+
+			task->bytes_left = task->req_http->cl;
+			task->state = HEADER;
+			break;
+		case HEADER:  // want header
+		case BODY:  // want body
+			while (task->bytes_left > 0) {
+				// read http body & uncompress it
+				body_part uncompressed_body_part;
+				int bytes_read = read_body_part(task->req_http, task->bytes_left, &uncompressed_body_part);
+				if (bytes_read <= 0) {
+					//TODO:add_soap_error(r, 500, "Error reading soap, err: %d", errno );
+					//TODO:goto E_x_i_t;
+				}
+				task->bytes_left -= bytes_read;
+
+				// parse chunk
+				parse_soap_chunk(task->req_xml, uncompressed_body_part.data, uncompressed_body_part.length);
+
+				if (task->req_xml->body) {
+					task->state = DONE;
+					break;
+				}
+				else if (task->req_xml->header && task->req_xml->action_namespace && task->req_xml->action_name) {
+					task->state = BODY;
+					break;
+				}
+			}
+			break;
+		case DONE:  // read from memory
+			break;
+		default:
+			break;
+		}
+	}
+	return 0;
 }
 
 /*
@@ -142,25 +213,28 @@ sess_record* priv_soap_get(VRT_CTX, struct vmod_priv *priv /* PRIV_TASK */)
         return (priv_soap_task);
 }
 
-VCL_STRING vmod_action(VRT_CTX, struct vmod_priv *priv /* PRIV_TASK */)
+VCL_STRING __match_proto__(td_soap_action)
+vmod_action(VRT_CTX, struct vmod_priv *priv /* PRIV_TASK */)
 {
-        struct priv_soap_task *r = priv_soap_get(ctx, priv);
-        if(process_soap_request(r) == 0) {
-                return r->action;
+        struct priv_soap_task *soap_task = priv_soap_get(ctx, priv);
+        if(process_request(soap_task, HEADER) == 0) {
+                return (soap_task->req_xml->action_name);
         }
-        return "TODO: ERROR";
+        return ("TODO: ERROR");
 }
 
-VCL_STRING vmod_action_namespace(VRT_CTX, struct vmod_priv *priv /* PRIV_TASK */)
+VCL_STRING __match_proto__(td_soap_action_namespace)
+vmod_action_namespace(VRT_CTX, struct vmod_priv *priv /* PRIV_TASK */)
 {
-        struct priv_soap_task *r = priv_soap_get(ctx, priv);
-        if(process_soap_request(r) == 0) {
-                return r->action_namespace;
+        struct priv_soap_task *soap_task = priv_soap_get(ctx, priv);
+        if(process_request(soap_task, HEADER) == 0) {
+                return (soap_task->req_xml->action_namespace);
         }
-        return "TODO: ERROR";
+        return ("TODO: ERROR");
 }
 
-void vmod_add_namespace(VRT_CTX, struct vmod_priv *priv /* PRIV_VCL */, const char* name, const char* uri)
+VCL_VOID __match_proto__(td_soap_add_namespace)
+vmod_add_namespace(VRT_CTX, struct vmod_priv *priv /* PRIV_VCL */, VCL_STRING prefix, VCL_STRING uri)
 {
     struct priv_soap_vcl        *priv_soap_vcl;
     struct soap_namespace       *namespace;
@@ -170,7 +244,42 @@ void vmod_add_namespace(VRT_CTX, struct vmod_priv *priv /* PRIV_VCL */, const ch
     ALLOC_OBJ(namespace, PRIV_SOAP_NAMESPACE_MAGIC);
     AN(namespace);
 
-    namespace->name = name;
+    namespace->prefix = prefix;
     namespace->uri = uri;
     VSLIST_INSERT_HEAD(&priv_soap_vcl->namespaces, namespace, list);
+}
+
+VCL_STRING __match_proto__(td_soap_xpath_header)
+vmod_xpath_header(VRT_CTX, struct vmod_priv *priv_vcl /* PRIV_VCL */, struct vmod_priv *priv_task /* PRIV_TASK */, VCL_STRING xpath)
+{
+	struct priv_soap_vcl *soap_vcl;;
+	struct priv_soap_task *soap_task;
+
+	AN(priv_vcl);
+	CAST_OBJ_NOTNULL(soap_vcl, priv_vcl->priv, PRIV_SOAP_VCL_MAGIC);
+
+	AN(priv_task);
+	soap_task = priv_soap_get(ctx, priv_task);
+
+	if(!process_request(soap_task, HEADER)) {
+		return ("TODO: make SOAP error?");
+	}
+	return (evaluate_xpath(soap_vcl, soap_task->req_xml->header, xpath));
+}
+
+VCL_STRING __match_proto__(td_soap_xpath_body)
+vmod_xpath_body(VRT_CTX, struct vmod_priv *priv_vcl /* PRIV_VCL */, struct vmod_priv *priv_task /* PRIV_TASK */, VCL_STRING xpath)
+{
+	return ("");
+}
+
+VCL_VOID __match_proto__(td_soap_synthetic)
+vmod_synthetic(VRT_CTX, struct vmod_priv *priv_task /* PRIV_TASK */, VCL_INT soap_code, VCL_STRING soap_message)
+{
+	struct priv_soap_task *priv_soap_task;
+
+	AN(priv_task);
+	priv_soap_task = priv_soap_get(ctx, priv_task);
+
+	VRT_synth_page(ctx, "<soap>synth error</soap>");
 }
