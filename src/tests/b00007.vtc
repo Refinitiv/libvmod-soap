@@ -1,0 +1,1 @@
+varnishtest "SOAP: Body XPATH is not found / or empty."

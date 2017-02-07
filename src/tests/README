@@ -13,6 +13,7 @@ Naming scheme
 
                 [id]%05d.vtc
 
+        id ~ ^a         --> VMOD internal errors 
         id ~ ^b         --> Basic functionality tests
         id ~ ^c         --> Complex functionality tests
         id ~ ^g         --> GZIP tests

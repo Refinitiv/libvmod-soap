@@ -1,0 +1,1 @@
+varnishtest "SOAP: Envelope contains element different than Header or Body."

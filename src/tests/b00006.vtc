@@ -1,0 +1,1 @@
+varnishtest "SOAP: Header XPATH is not found / or empty."

@@ -1,0 +1,1 @@
+varnishtest "SOAP: Request has no action URI."
