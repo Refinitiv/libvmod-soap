@@ -304,7 +304,19 @@ VCL_STRING __match_proto__(td_soap_xpath_header)
 VCL_STRING __match_proto__(td_soap_xpath_body)
 	vmod_xpath_body(VRT_CTX, struct vmod_priv *priv_vcl /* PRIV_VCL */, struct vmod_priv *priv_task /* PRIV_TASK */, VCL_STRING xpath)
 {
-	return ("");
+	struct priv_soap_vcl *soap_vcl;;
+	struct priv_soap_task *soap_task;
+
+	AN(priv_vcl);
+	CAST_OBJ_NOTNULL(soap_vcl, priv_vcl->priv, PRIV_SOAP_VCL_MAGIC);
+
+	AN(priv_task);
+	soap_task = priv_soap_get(ctx, priv_task);
+
+	if(process_request(soap_task, BODY) == 0) {
+		return (evaluate_xpath(soap_vcl, soap_task, soap_task->req_xml->body, xpath));
+	}
+	return ("TODO: make SOAP error?");
 }
 
 VCL_VOID __match_proto__(td_soap_synthetic)
