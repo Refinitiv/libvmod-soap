@@ -112,7 +112,7 @@ const char* evaluate_xpath(struct priv_soap_vcl *soap_vcl, struct priv_soap_task
 
 	xmlXPathFreeObject(xpathObj);
 	VSLb(soap_task->ctx->vsl, SLT_Debug, "SOAP: xpath %s find nothing in %s", xpath, node->name);
-	return ("TODO: mark not found");
+	return "";
 }
 
 /* -------------------------------------------------------------------------------------/
