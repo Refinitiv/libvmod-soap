@@ -295,10 +295,10 @@ VCL_STRING __match_proto__(td_soap_xpath_header)
 	AN(priv_task);
 	soap_task = priv_soap_get(ctx, priv_task);
 
-	if(!process_request(soap_task, HEADER)) {
-		return ("TODO: make SOAP error?");
+	if(process_request(soap_task, HEADER) == 0) {
+		return (evaluate_xpath(soap_vcl, soap_task, soap_task->req_xml->header, xpath));
 	}
-	return (evaluate_xpath(soap_vcl, soap_task->req_xml->header, xpath));
+	return ("TODO: make SOAP error?");
 }
 
 VCL_STRING __match_proto__(td_soap_xpath_body)

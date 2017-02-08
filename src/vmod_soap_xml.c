@@ -74,7 +74,7 @@ void add_soap_error(struct soap_req_xml *req_xml, int status, const char* fmt, .
 /* -------------------------------------------------------------------------------------/
    Runs XPath expression against single xml node
 */
-const char* evaluate_xpath(struct priv_soap_vcl *priv_soap_vcl, xmlNodePtr node, const char* xpath)
+const char* evaluate_xpath(struct priv_soap_vcl *soap_vcl, struct priv_soap_task *soap_task, xmlNodePtr node, const char* xpath)
 {
 	xmlXPathContextPtr	    xpathCtx;
 	xmlXPathObjectPtr	    xpathObj;
@@ -83,12 +83,14 @@ const char* evaluate_xpath(struct priv_soap_vcl *priv_soap_vcl, xmlNodePtr node,
 
 	AN(node);
 	AN(node->doc);
+	VSLb(soap_task->ctx->vsl, SLT_Debug, "SOAP: xpath %s find in %s", xpath, node->name);
 
 	xpathCtx = xmlXPathNewContext(node->doc);
 	XXXAN(xpathCtx);
 
-	VSLIST_FOREACH(ns, &priv_soap_vcl->namespaces, list) {
+	VSLIST_FOREACH(ns, &soap_vcl->namespaces, list) {
 		if (xmlXPathRegisterNs(xpathCtx, ns->prefix, ns->uri)) {
+			VSLb(soap_task->ctx->vsl, SLT_Error, "SOAP: can't register ns (%s,%s)", ns->prefix, ns->uri);
 			return ("TODO: mark ERROR");
 		}
 	}
@@ -97,6 +99,7 @@ const char* evaluate_xpath(struct priv_soap_vcl *priv_soap_vcl, xmlNodePtr node,
 	xpathObj = xmlXPathEvalExpression(xpath, xpathCtx);
 	if(xpathObj == NULL) {
 		xmlXPathFreeContext(xpathCtx);
+		VSLb(soap_task->ctx->vsl, SLT_Error, "SOAP: can't validate xpath %s", xpath);
 		return ("TODO: mark wrong xPath");
 	}
 
@@ -108,6 +111,7 @@ const char* evaluate_xpath(struct priv_soap_vcl *priv_soap_vcl, xmlNodePtr node,
 	}
 
 	xmlXPathFreeObject(xpathObj);
+	VSLb(soap_task->ctx->vsl, SLT_Debug, "SOAP: xpath %s find nothing in %s", xpath, node->name);
 	return ("TODO: mark not found");
 }
 
