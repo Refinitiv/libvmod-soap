@@ -74,8 +74,8 @@ int read_body_part(struct soap_req_http *req_http, int bytes_left, body_part *un
 {
 	char buf[BUFFER_SIZE]; // TODO: read varnish gzip buffer size?
 	body_part *read_part;
-	if (req_http->encoding == CE_UNKNOWN)
-	{
+	if (req_http->encoding == CE_UNKNOWN) {
+		VSLb(req_http->ctx->vsl, SLT_Error, "Unknown Content-Encoding");
 		return -1;
 	}
 	int bytes_to_read = bytes_left > BUFFER_SIZE ? BUFFER_SIZE : bytes_left;
@@ -87,6 +87,7 @@ int read_body_part(struct soap_req_http *req_http, int bytes_left, body_part *un
 	read_part = (body_part*)apr_palloc(req_http->pool, sizeof(body_part));
 	if (read_part == 0)
 	{
+		VSLb(req_http->ctx->vsl, SLT_Error, "Can't alloc memory (%ld bytes)", sizeof(body_part));
 		return -1;
 	}
 	read_part->length = bytes_read;
@@ -105,6 +106,7 @@ int read_body_part(struct soap_req_http *req_http, int bytes_left, body_part *un
 	{
 		return bytes_read;
 	}
+	VSLb(req_http->ctx->vsl, SLT_Error, "Can't uncompress gzip body");
 	return -1;
 }
 
@@ -138,6 +140,7 @@ void return_buffer(struct soap_req_http *req_http, struct http_conn* htc, char* 
 	int size = end - base;
 	char *new_content;
 
+	VSLb(req_http->ctx->vsl, SLT_Debug, "return_buffer 0: %ld", htc->pipeline_e - htc->pipeline_b);
 	if (htc->pipeline_b != 0)
 	{
 		size += htc->pipeline_e - htc->pipeline_b;
@@ -151,6 +154,7 @@ void return_buffer(struct soap_req_http *req_http, struct http_conn* htc, char* 
 	}
 	htc->pipeline_b = new_content;
 	htc->pipeline_e = new_content + size;
+	VSLb(req_http->ctx->vsl, SLT_Debug, "return_buffer 0: %ld", htc->pipeline_e - htc->pipeline_b);
 }
 
 void init_req_http(struct soap_req_http *req_http)
