@@ -119,8 +119,10 @@ static void clean_task(void *priv)
 	AN(priv);
 	CAST_OBJ_NOTNULL(priv_soap_task, priv, PRIV_SOAP_TASK_MAGIC);
 
-	clean_req_xml(priv_soap_task->req_xml);
-	priv_soap_task->req_xml = NULL;
+	// TODO: avoid memory leaks when vmod_cleanup() is not called
+	// Check internals of varnish to have a working version of "return_buffer"
+	FREE_OBJ(priv_soap_task->req_xml);
+	FREE_OBJ(priv_soap_task->req_http);
 
 	AN(priv_soap_task->pool);
 	apr_pool_destroy(priv_soap_task->pool);
@@ -138,8 +140,6 @@ int process_request(struct priv_soap_task *task, enum soap_state state)
 			task->req_http->pool = task->pool;
 			task->req_http->ctx = task->ctx;
 			init_req_http(task->req_http);
-
-			init_gzip(task->req_http);
 
 			task->req_xml->pool = task->pool;
 			task->req_xml->ctx = task->ctx;
@@ -326,8 +326,12 @@ VCL_VOID __match_proto__(td_soap_cleanup)
 	AN(priv_task);
 	priv_soap_task = priv_soap_get(ctx, priv_task);
 
-	if(priv_soap_task->req_http) {
-		clean_req_http(priv_soap_task->req_http);
-		priv_soap_task->req_http = NULL;
-	}
+	clean_req_xml(priv_soap_task->req_xml);
+	INIT_OBJ(priv_soap_task->req_xml, SOAP_REQ_XML_MAGIC);
+
+	clean_req_http(priv_soap_task->req_http);
+	INIT_OBJ(priv_soap_task->req_http, SOAP_REQ_HTTP_MAGIC);
+
+	priv_soap_task->state = NONE;
+	priv_soap_task->bytes_left = 0;
 }

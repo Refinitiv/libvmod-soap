@@ -163,6 +163,8 @@ void init_req_http(struct soap_req_http *req_http)
 	req_http->encoding = http_content_encoding(req_http->ctx->http_req);
 	req_http->bodyparts = apr_array_make(req_http->pool, 16, sizeof(body_part*));
 	XXXAN(req_http->bodyparts);
+
+	init_gzip(req_http);
 }
 
 /* -------------------------------------------------------------------------------------/
@@ -178,4 +180,6 @@ void clean_req_http(struct soap_req_http *req_http)
 	offset = convert_parts(req_http, req_http->bodyparts, &buf);
 	return_buffer(req_http, req_http->ctx->req->htc, buf, buf + offset);
 	req_http->bodyparts = NULL;
+
+	clean_gzip(req_http);
 }
