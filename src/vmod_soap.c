@@ -130,9 +130,11 @@ static void clean_task(void *priv)
 
 int process_request(struct priv_soap_task *task, enum soap_state state)
 {
+	VSLb(task->ctx->vsl, SLT_Debug, "process_request 0: %d/%d", task->state, state);
 	while (task->state < state) {
 		switch (task->state) {
-		case INIT:  // init
+		case NONE:  // init
+			VSLb(task->ctx->vsl, SLT_Debug, "process_request 1: %d/%d", task->state, state);
 			task->req_http->pool = task->pool;
 			task->req_http->ctx = task->ctx;
 			init_req_http(task->req_http);
@@ -144,40 +146,48 @@ int process_request(struct priv_soap_task *task, enum soap_state state)
 			init_req_xml(task->req_xml);
 
 			task->bytes_left = task->req_http->cl;
-			task->state = HEADER;
+			task->state = INIT;
 			break;
-		case HEADER:  // want header
-		case BODY:  // want body
+		case INIT:  // want header
+		case HEADER:  // want body
+			VSLb(task->ctx->vsl, SLT_Debug, "process_request 5: %d/%d", task->state, state);
 			while (task->bytes_left > 0) {
 				// read http body & uncompress it
 				body_part uncompressed_body_part;
 				int bytes_read = read_body_part(task->req_http, task->bytes_left, &uncompressed_body_part);
 				if (bytes_read <= 0) {
-					//TODO:add_soap_error(r, 500, "Error reading soap, err: %d", errno );
-					//TODO:goto E_x_i_t;
+					VSLb(task->ctx->vsl, SLT_Error, "SOAP: http read failed %d", errno);
+					return (-1);
 				}
 				task->bytes_left -= bytes_read;
 
 				// parse chunk
-				parse_soap_chunk(task->req_xml, uncompressed_body_part.data, uncompressed_body_part.length);
+				if (parse_soap_chunk(task->req_xml, uncompressed_body_part.data, uncompressed_body_part.length)) {
+					VSLb(task->ctx->vsl, SLT_Error, "SOAP: soap read failed %d", errno);
+					return (-1);
+				}
 
 				if (task->req_xml->body) {
-					task->state = DONE;
+					task->state = BODY;
 					break;
 				}
 				else if (task->req_xml->header && task->req_xml->action_namespace && task->req_xml->action_name) {
-					task->state = BODY;
+					task->state = HEADER;
 					break;
 				}
 			}
 			break;
-		case DONE:  // read from memory
+		case BODY:  // read from memory
+		case DONE:
+			VSLb(task->ctx->vsl, SLT_Debug, "process_request 8: %d/%d", task->state, state);
 			break;
 		default:
+			VSLb(task->ctx->vsl, SLT_Debug, "process_request 9: %d/%d", task->state, state);
 			break;
 		}
 	}
-	return 0;
+	VSLb(task->ctx->vsl, SLT_Debug, "process_request .: %d/%d", task->state, state);
+	return (0);
 }
 
 /*

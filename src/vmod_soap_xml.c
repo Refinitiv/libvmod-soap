@@ -331,7 +331,7 @@ int synth_soap_fault(struct soap_req_xml *req_xml)
 	return 0;
 }
 
-void parse_soap_chunk(struct soap_req_xml *soap_req_xml, const char *data, int length)
+int parse_soap_chunk(struct soap_req_xml *soap_req_xml, const char *data, int length)
 {
 	int err = xmlParseChunk(soap_req_xml->parser, data, length, 0);
 
@@ -348,5 +348,8 @@ void parse_soap_chunk(struct soap_req_xml *soap_req_xml, const char *data, int l
 				message = xml_error->message;
 		}
 		add_soap_error(soap_req_xml, 500, "SOAP parsing failed: %s", message);
+		VSLb(soap_req_xml->ctx->vsl, SLT_Error, "SOAP parsing failed %s", message);
+		return -1;
 	}
+	return 0;
 }
