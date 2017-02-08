@@ -243,6 +243,10 @@ void clean_xml()
 
 void init_req_xml(struct soap_req_xml *req_xml)
 {
+	AN(req_xml);
+	VSLb(req_xml->ctx->vsl, SLT_Debug, "init_req_xml");
+
+	AZ(req_xml->parser);
 	req_xml->parser = xmlCreatePushParserCtxt(&soap_sax_handler, 0, 0, 0, 0);
 	req_xml->parser->_private = req_xml;
 	req_xml->parent_stack = apr_array_make(req_xml->pool, 16, sizeof(elem_info*));
@@ -251,6 +255,8 @@ void init_req_xml(struct soap_req_xml *req_xml)
 void clean_req_xml(struct soap_req_xml *req_xml)
 {
 	AN(req_xml);
+	VSLb(req_xml->ctx->vsl, SLT_Debug, "clean_req_xml");
+
 	AN(req_xml->parser);
 	xmlFreeDoc(req_xml->parser->myDoc);
 	xmlFreeParserCtxt(req_xml->parser);

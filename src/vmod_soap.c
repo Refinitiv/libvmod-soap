@@ -92,21 +92,23 @@ static struct priv_soap_vcl* init_vcl()
 */
 static struct priv_soap_task* init_task(VRT_CTX)
 {
-	struct priv_soap_task *priv_soap_task;
+	struct priv_soap_task *soap_task;
 
-	ALLOC_OBJ(priv_soap_task, PRIV_SOAP_TASK_MAGIC);
-	AN(priv_soap_task);
+	ALLOC_OBJ(soap_task, PRIV_SOAP_TASK_MAGIC);
+	AN(soap_task);
 
-	priv_soap_task->ctx = ctx;
+	soap_task->ctx = ctx;
 
-	XXXAZ(apr_pool_create(&priv_soap_task->pool, apr_pool));
+	XXXAZ(apr_pool_create(&soap_task->pool, apr_pool));
 
-	ALLOC_OBJ(priv_soap_task->req_http, SOAP_REQ_HTTP_MAGIC);
-	XXXAN(priv_soap_task->req_http);
+	ALLOC_OBJ(soap_task->req_http, SOAP_REQ_HTTP_MAGIC);
+	XXXAN(soap_task->req_http);
 
-	ALLOC_OBJ(priv_soap_task->req_xml, SOAP_REQ_XML_MAGIC);
-	XXXAN(priv_soap_task->req_xml);
-	return priv_soap_task;
+	ALLOC_OBJ(soap_task->req_xml, SOAP_REQ_XML_MAGIC);
+	XXXAN(soap_task->req_xml);
+
+	VSLb(soap_task->ctx->vsl, SLT_Debug, "init_task");
+	return soap_task;
 }
 
 /* -----------------------------------------------------------------/
@@ -114,20 +116,24 @@ static struct priv_soap_task* init_task(VRT_CTX)
 */
 static void clean_task(void *priv)
 {
-	struct priv_soap_task *priv_soap_task;
+	struct priv_soap_task *soap_task;
 
 	AN(priv);
-	CAST_OBJ_NOTNULL(priv_soap_task, priv, PRIV_SOAP_TASK_MAGIC);
+	CAST_OBJ_NOTNULL(soap_task, priv, PRIV_SOAP_TASK_MAGIC);
 
 	// TODO: avoid memory leaks when vmod_cleanup() is not called
 	// Check internals of varnish to have a working version of "return_buffer"
-	FREE_OBJ(priv_soap_task->req_xml);
-	FREE_OBJ(priv_soap_task->req_http);
+	INIT_OBJ(soap_task->req_xml, SOAP_REQ_XML_MAGIC);
+	FREE_OBJ(soap_task->req_xml);
 
-	AN(priv_soap_task->pool);
-	apr_pool_destroy(priv_soap_task->pool);
+	INIT_OBJ(soap_task->req_http, SOAP_REQ_HTTP_MAGIC);
+	FREE_OBJ(soap_task->req_http);
 
-	FREE_OBJ(priv_soap_task);
+	AN(soap_task->pool);
+	apr_pool_destroy(soap_task->pool);
+
+	INIT_OBJ(soap_task, PRIV_SOAP_TASK_MAGIC);
+	FREE_OBJ(soap_task);
 }
 
 int process_request(struct priv_soap_task *task, enum soap_state state)
@@ -337,13 +343,12 @@ VCL_VOID __match_proto__(td_soap_cleanup)
 
 	AN(priv_task);
 	priv_soap_task = priv_soap_get(ctx, priv_task);
+	priv_soap_task->state = NONE;
+	priv_soap_task->bytes_left = 0;
 
 	clean_req_xml(priv_soap_task->req_xml);
 	INIT_OBJ(priv_soap_task->req_xml, SOAP_REQ_XML_MAGIC);
 
 	clean_req_http(priv_soap_task->req_http);
 	INIT_OBJ(priv_soap_task->req_http, SOAP_REQ_HTTP_MAGIC);
-
-	priv_soap_task->state = NONE;
-	priv_soap_task->bytes_left = 0;
 }
