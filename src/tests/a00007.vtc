@@ -1,33 +1,20 @@
-varnishtest "SOAP: soap validating, token on two headers present and equals"
+varnishtest "SOAP: req body is in XML format, but white space at the beginning (invalid)"
 
-#start server
-server s1 {
-        rxreq
-        expect req.http.soap-uuid == "lenin"
-        txresp
-} -start
-
-#start varnish instance
 varnish v1 -vcl+backend {
     import ${vmod_soap};
 
-    sub vcl_init
-    {
-            soap.add_namespace("ui", "http://schemas.reuters.com/ns/2005/08/infrastructure/tornado_soap");
-            soap.add_namespace("uuid", "http://schemas.reuters.com/ns/2007/10/cp/user_identity");
-    }
-
     sub vcl_recv
     {
-            set req.http.soap-uuid = soap.xpath_header("ui:userIdentity/uuid:UUID");
+            set req.http.soap = soap.action_namespace();
             soap.cleanup();
     }
 } -start
 
-#start client
 client c1 {
         timeout 8
-        txreq -req POST -body {<?xml version="1.0" encoding="utf-8"?>
+        # space must be present between { and <?xml to generate HTTP 400
+        txreq -req POST -body {
+                <?xml version="1.0" encoding="utf-8"?>
                 <Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
                 <Header>
                 <userIdentity xmlns="http://schemas.reuters.com/ns/2005/08/infrastructure/tornado_soap">
@@ -38,5 +25,5 @@ client c1 {
                 </Body></Envelope>
         }
         rxresp
-        expect resp.status == 200
+        expect resp.status == 400
 } -run
