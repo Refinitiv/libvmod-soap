@@ -1,6 +1,5 @@
 varnishtest "SOAP: read namespace"
 
-#start server
 server s1 {
         rxreq
         expect req.http.soap-ws-ns == "Test"
@@ -8,7 +7,6 @@ server s1 {
         txresp -status 200
 } -start
 
-#start varnish instance
 varnish v1 -vcl+backend {
     import ${vmod_soap};
 
@@ -19,7 +17,6 @@ varnish v1 -vcl+backend {
     }
 } -start
 
-#start client
 client c1 {
         timeout 8
         txreq -req POST -body {<?xml version="1.0" encoding="utf-8"?>

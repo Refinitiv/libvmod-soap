@@ -1,6 +1,5 @@
 varnishtest "SOAP: valid xpath header and body"
 
-#start server
 server s1 {
         rxreq
         expect req.http.soap-uuid == "lenin"
@@ -11,7 +10,6 @@ server s1 {
         txresp
 } -start
 
-#start varnish instance
 varnish v1 -vcl+backend {
     import ${vmod_soap};
 
@@ -33,7 +31,6 @@ varnish v1 -vcl+backend {
     }
 } -start
 
-#start client
 client c1 {
         timeout 8
         txreq -req POST -url "/header" -body {<?xml version="1.0" encoding="utf-8"?>

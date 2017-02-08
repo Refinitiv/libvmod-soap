@@ -1,6 +1,5 @@
 varnishtest "SOAP: read namespace"
 
-#start server
 server s1 {
         rxreq
         expect req.http.soap-ws-ns == "http://schemas.reuters.com/mytest"
@@ -8,7 +7,6 @@ server s1 {
         txresp -status 200
 } -start
 
-#start varnish instance
 varnish v1 -vcl+backend {
     import ${vmod_soap};
 
