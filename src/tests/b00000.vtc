@@ -15,10 +15,11 @@ varnish v1 -vcl+backend {
     sub vcl_recv
     {
             set req.http.soap-ws-ns = soap.action_namespace();
+            soap.cleanup();
     }
+    
 } -start
 
-#start client
 client c1 {
         timeout 8
         txreq -req POST -body {<?xml version="1.0" encoding="utf-8"?>

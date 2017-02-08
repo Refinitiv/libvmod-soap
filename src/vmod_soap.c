@@ -122,9 +122,6 @@ static void clean_task(void *priv)
 	clean_req_xml(priv_soap_task->req_xml);
 	priv_soap_task->req_xml = NULL;
 
-	clean_req_http(priv_soap_task->req_http);
-	priv_soap_task->req_http = NULL;
-
 	AN(priv_soap_task->pool);
 	apr_pool_destroy(priv_soap_task->pool);
 
@@ -309,4 +306,18 @@ VCL_VOID __match_proto__(td_soap_synthetic)
 	priv_soap_task = priv_soap_get(ctx, priv_task);
 
 	VRT_synth_page(ctx, "<soap>synth error</soap>");
+}
+
+VCL_VOID __match_proto__(td_soap_cleanup)
+	vmod_cleanup(VRT_CTX, struct vmod_priv *priv_task /* PRIV_TASK */)
+{
+	struct priv_soap_task *priv_soap_task;
+
+	AN(priv_task);
+	priv_soap_task = priv_soap_get(ctx, priv_task);
+
+	if(priv_soap_task->req_http) {
+		clean_req_http(priv_soap_task->req_http);
+		priv_soap_task->req_http = NULL;
+	}
 }

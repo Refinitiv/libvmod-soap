@@ -16,6 +16,7 @@ varnish v1 -vcl+backend {
     {
             set req.http.soap-action = soap.action();
             set req.http.soap-action-ns = soap.action_namespace();
+            soap.cleanup();
     }
 } -start
 

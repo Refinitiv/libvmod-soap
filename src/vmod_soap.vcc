@@ -44,21 +44,31 @@ Return namespace of SOAP body's action
 
 $Function VOID add_namespace(PRIV_VCL, STRING, STRING)
 
-Add namespace "prefix/uri" into known namespaces (see `xpath_header` and `xpath_body`)
+Add namespace "prefix/uri" into known namespaces.
+See also `xpath_header` and `xpath_body`.
 
 
 $Function STRING xpath_header(PRIV_VCL, PRIV_TASK, STRING)
 
-Return xpath value in SOAP Header. It uses the namespace table (see `add_namespace`).
+Return xpath value in SOAP Header.
+It uses the namespace table (see `add_namespace`).
 
 
 $Function STRING xpath_body(PRIV_VCL, PRIV_TASK, STRING)
 
-Return xpath value in SOAP Body. It uses the namespace table (see `add_namespace`).
+Return xpath value in SOAP Body.
+It uses the namespace table (see `add_namespace`).
 
+
+$Function VOID cleanup(PRIV_TASK)
+
+Restore request in the varnish pipeline. Mandatory if any of the
+function above has been executed.
+Else, varnish will probably fail requests with "503 Backend
+ fetch failed/FetchError: straight insufficient bytes"" error.
 
 $Function VOID synthetic(PRIV_TASK, INT, STRING)
 
-Create a SOAP synthetic response's body containing SOAP FaultCode and FaultMessage.
-Note that FaultMessage will contain any internal errors found.
+Create a SOAP synthetic response's body containing SOAP FaultCode and 
+FaultMessage. Note that FaultMessage will contain any internal errors found.
 Format of the response depends of the SOAP version of the request (1.1 or 1.2).
