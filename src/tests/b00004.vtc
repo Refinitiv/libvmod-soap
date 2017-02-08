@@ -1,9 +1,13 @@
-varnishtest "SOAP: soap validating, token on two headers present and equals"
+varnishtest "SOAP: valid xpath header and body"
 
 #start server
 server s1 {
         rxreq
         expect req.http.soap-uuid == "lenin"
+        txresp
+        
+        rxreq
+        expect req.http.soap-uuid == "obama"
         txresp
 } -start
 
@@ -19,7 +23,12 @@ varnish v1 -vcl+backend {
 
     sub vcl_recv
     {
-            set req.http.soap-uuid = soap.xpath_header("ui:userIdentity/uuid:UUID");
+            if(req.url == "/header") {
+                    set req.http.soap-uuid = soap.xpath_header("ui:userIdentity/uuid:UUID");
+            }
+            else {
+                    set req.http.soap-uuid = soap.xpath_body("ui:userIdentity/uuid:UUID");
+            }
             soap.cleanup();
     }
 } -start
@@ -27,7 +36,7 @@ varnish v1 -vcl+backend {
 #start client
 client c1 {
         timeout 8
-        txreq -req POST -body {<?xml version="1.0" encoding="utf-8"?>
+        txreq -req POST -url "/header" -body {<?xml version="1.0" encoding="utf-8"?>
                 <Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
                 <Header>
                 <userIdentity xmlns="http://schemas.reuters.com/ns/2005/08/infrastructure/tornado_soap">
@@ -35,6 +44,19 @@ client c1 {
                 </userIdentity>
                 </Header><Body>
                 <Test xmlns="http://schemas.reuters.com/mytest"/>
+                </Body></Envelope>
+        }
+        rxresp
+        expect resp.status == 200
+
+        txreq -req POST -url "/body" -body {<?xml version="1.0" encoding="utf-8"?>
+                <Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+                <Header>
+                </Header><Body>
+                <Test xmlns="http://schemas.reuters.com/mytest"/>
+                <userIdentity xmlns="http://schemas.reuters.com/ns/2005/08/infrastructure/tornado_soap">
+                <UUID xmlns="http://schemas.reuters.com/ns/2007/10/cp/user_identity">lenin</UUID>
+                </userIdentity>
                 </Body></Envelope>
         }
         rxresp
