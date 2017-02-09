@@ -1,28 +1,39 @@
-varnishtest "SOAP: req body is in XML format, but white space at the beginning (invalid)"
+varnishtest "SOAP: req body is in XML format, but white space at the beginning"
+
+server s1 {
+        rxreq
+        expect req.http.soap-ws-ns == "http://schemas.reuters.com/mytest"
+        expect req.http.content-length == 198
+        txresp -status 200
+} -start
 
 varnish v1 -vcl+backend {
     import ${vmod_soap};
 
     sub vcl_recv
     {
-            set req.http.soap = soap.action_namespace();
+            if(soap.is_valid()) {
+                    set req.http.soap-ws-ns = soap.action_namespace();
+            }
+            else {
+                    return (synth(400, "Wrong SOAP message"));
+            }
     }
 } -start
 
 client c1 {
         timeout 8
-        # space must be present between { and <?xml to generate HTTP 400
-        txreq -req POST -body {
-                <?xml version="1.0" encoding="utf-8"?>
-                <Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
-                <Header>
-                <userIdentity xmlns="http://schemas.reuters.com/ns/2005/08/infrastructure/tornado_soap">
-                <UUID xmlns="http://schemas.reuters.com/ns/2007/10/cp/user_identity">lenin</UUID>
-                </userIdentity>
-                </Header><Body>
-                <Test xmlns="http://schemas.reuters.com/mytest"/>
-                </Body></Envelope>
-        }
+        txreq -req POST -body { <?xml version="1.0" encoding="utf-8"?>
+        <Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+        <Body><Test xmlns="http://schemas.reuters.com/mytest"/></Body>
+        </Envelope>}
         rxresp
         expect resp.status == 400
+
+        txreq -req POST -body {<?xml version="1.0" encoding="utf-8"?>
+        <Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+        <Body><Test xmlns="http://schemas.reuters.com/mytest"/></Body>
+        </Envelope>}
+        rxresp
+        expect resp.status == 200
 } -run
