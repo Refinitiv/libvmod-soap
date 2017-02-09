@@ -66,16 +66,19 @@ v1f_read(const struct vfp_ctx *vc, struct http_conn *htc, void *d, ssize_t len)
 	return (i + l);
 }
 
-
 /* -------------------------------------------------------------------------------------/
    Read body part from varnish pipeline and uncompress the data if necessary
 */
 int read_body_part(struct soap_req_http *req_http, int bytes_left, body_part *uncompressed_body_part)
 {
-	char buf[BUFFER_SIZE]; // TODO: read varnish gzip buffer size?
+	char *buf;
 	body_part *read_part;
-	int bytes_to_read = bytes_left > BUFFER_SIZE ? BUFFER_SIZE : bytes_left;
-	int bytes_read = v1f_read(req_http->ctx->req->htc->vfc, req_http->ctx->req->htc, buf, bytes_to_read);
+	int bytes_to_read;
+	int bytes_read;
+
+	buf = WS_Alloc(req_http->ctx->ws, BUFFER_SIZE);
+	bytes_to_read = bytes_left > BUFFER_SIZE ? BUFFER_SIZE : bytes_left;
+	bytes_read = v1f_read(req_http->ctx->req->htc->vfc, req_http->ctx->req->htc, buf, bytes_to_read);
 	if (bytes_read <= 0)
 	{
 		return bytes_read;
@@ -90,11 +93,7 @@ int read_body_part(struct soap_req_http *req_http, int bytes_left, body_part *un
 	read_part->length = bytes_read;
 	read_part->data = apr_pmemdup(req_http->pool, buf, bytes_read);
 	APR_ARRAY_PUSH(req_http->bodyparts, body_part*) = read_part;
-	if(uncompressed_body_part == NULL)
-	{
-		return bytes_read;
-	}
-	else if (req_http->encoding == CE_NONE)
+	if (req_http->encoding == CE_NONE)
 	{
 		memcpy(uncompressed_body_part, read_part, sizeof(body_part));
 		return bytes_read;
