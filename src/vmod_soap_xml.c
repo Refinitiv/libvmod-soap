@@ -255,12 +255,13 @@ void init_req_xml(struct soap_req_xml *req_xml)
 void clean_req_xml(struct soap_req_xml *req_xml)
 {
 	AN(req_xml);
-	VSLb(req_xml->ctx->vsl, SLT_Debug, "clean_req_xml");
 
-	AN(req_xml->parser);
-	xmlFreeDoc(req_xml->parser->myDoc);
-	xmlFreeParserCtxt(req_xml->parser);
-	req_xml->parser = NULL;
+	if(req_xml->parser) {
+		VSLb(req_xml->ctx->vsl, SLT_Debug, "clean_req_xml");
+		xmlFreeDoc(req_xml->parser->myDoc);
+		xmlFreeParserCtxt(req_xml->parser);
+		req_xml->parser = NULL;
+	}
 }
 
 /* -------------------------------------------------------------------------------------/

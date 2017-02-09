@@ -1,0 +1,47 @@
+varnishtest "SOAP: VCL multiple identical calls"
+
+server s1 {
+        rxreq
+        expect req.http.soap-ws-name == "Test"
+        expect req.http.soap-ws-ns == "http://schemas.reuters.com/mytest"
+        expect req.http.soap-ws-ns1 == "http://schemas.reuters.com/mytest"
+        expect req.http.soap-ws-ns2 == "http://schemas.reuters.com/mytest"
+        expect req.http.soap-ws-ns3 == "http://schemas.reuters.com/mytest"
+        expect req.http.content-length == 215
+        txresp -status 200
+} -start
+
+varnish v1 -vcl+backend {
+    import ${vmod_soap};
+
+    sub vcl_recv
+    {
+            soap.cleanup();
+            soap.cleanup();
+            soap.cleanup();
+            set req.http.soap-ws-ns = soap.action_namespace();
+            soap.cleanup();
+            soap.cleanup();
+            set req.http.soap-ws-ns1 = soap.action_namespace();
+            set req.http.soap-ws-ns2 = soap.action_namespace();
+            set req.http.soap-ws-ns3 = soap.action_namespace();
+            soap.cleanup();
+            soap.cleanup();
+            set req.http.soap-ws-name = soap.action();
+            soap.cleanup();
+            soap.cleanup();
+            soap.cleanup();
+    }
+
+} -start
+
+client c1 {
+        timeout 8
+        txreq -req POST -body {<?xml version="1.0" encoding="utf-8"?>
+        <Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+<Header><userIdentity/></Header><Body>
+<Test xmlns="http://schemas.reuters.com/mytest"/>
+</Body></Envelope>}
+        rxresp
+        expect resp.status == 200
+} -run

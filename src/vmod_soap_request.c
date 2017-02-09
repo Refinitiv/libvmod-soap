@@ -179,11 +179,12 @@ void clean_req_http(struct soap_req_http *req_http)
 	int offset;
 
 	AN(req_http);
-	VSLb(req_http->ctx->vsl, SLT_Debug, "clean_req_http");
 
-	AN(req_http->bodyparts);
-	offset = convert_parts(req_http, req_http->bodyparts, &buf);
-	return_buffer(req_http, req_http->ctx->req->htc, buf, buf + offset);
-	req_http->bodyparts = NULL;
-	clean_gzip(req_http);
+	if(req_http->bodyparts) {
+		VSLb(req_http->ctx->vsl, SLT_Debug, "clean_req_http");
+		offset = convert_parts(req_http, req_http->bodyparts, &buf);
+		return_buffer(req_http, req_http->ctx->req->htc, buf, buf + offset);
+		req_http->bodyparts = NULL;
+		clean_gzip(req_http);
+	}
 }
