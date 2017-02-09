@@ -74,10 +74,6 @@ int read_body_part(struct soap_req_http *req_http, int bytes_left, body_part *un
 {
 	char buf[BUFFER_SIZE]; // TODO: read varnish gzip buffer size?
 	body_part *read_part;
-	if (req_http->encoding == CE_UNKNOWN) {
-		VSLb(req_http->ctx->vsl, SLT_Error, "Unknown Content-Encoding");
-		return -1;
-	}
 	int bytes_to_read = bytes_left > BUFFER_SIZE ? BUFFER_SIZE : bytes_left;
 	int bytes_read = v1f_read(req_http->ctx->req->htc->vfc, req_http->ctx->req->htc, buf, bytes_to_read);
 	if (bytes_read <= 0)
@@ -163,7 +159,6 @@ void init_req_http(struct soap_req_http *req_http)
 	VSLb(req_http->ctx->vsl, SLT_Debug, "init_req_http");
 
 	AZ(req_http->bodyparts);
-	req_http->cl = http_content_length(req_http->ctx->http_req);
 	req_http->encoding = http_content_encoding(req_http->ctx->http_req);
 	req_http->bodyparts = apr_array_make(req_http->pool, 16, sizeof(body_part*));
 	XXXAN(req_http->bodyparts);

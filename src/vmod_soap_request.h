@@ -39,7 +39,6 @@ struct soap_req_http {
 	VRT_CTX;
 	apr_pool_t		*pool;
 
-	unsigned int		cl;
 	enum ce_type		encoding;
 
 	apr_array_header_t	*bodyparts;   // HTTP payload stored as is

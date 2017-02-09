@@ -146,17 +146,25 @@ int process_request(struct priv_soap_task *task, enum soap_state state)
 			task->req_http->pool = task->pool;
 			task->req_http->ctx = task->ctx;
 			init_req_http(task->req_http);
+			if (task->req_http->encoding != CE_GZIP && task->req_http->encoding != CE_NONE) {
+				VSLb(task->ctx->vsl, SLT_Error, "Unsupported Content-Encoding");
+				return -1;
+			}
 
 			task->req_xml->pool = task->pool;
 			task->req_xml->ctx = task->ctx;
 			init_req_xml(task->req_xml);
 
-			task->bytes_left = task->req_http->cl;
+			task->bytes_left = http_GetContentLength(task->ctx->http_req);
+			if(task->bytes_left <= 0) {
+				VSLb(task->ctx->vsl, SLT_Error, "Invalid content-length %ld", task->bytes_left);
+				return (-1);
+			}
 			task->state = INIT;
 			break;
 		case INIT:  // want header
 		case HEADER:  // want body
-			VSLb(task->ctx->vsl, SLT_Debug, "process_request 5: %d/%d", task->state, state);
+			VSLb(task->ctx->vsl, SLT_Debug, "process_request 5: %d/%d (%ld bytes)", task->state, state, task->bytes_left);
 			while (task->bytes_left > 0) {
 				// read http body & uncompress it
 				body_part uncompressed_body_part;
@@ -181,6 +189,9 @@ int process_request(struct priv_soap_task *task, enum soap_state state)
 					task->state = HEADER;
 					break;
 				}
+			}
+			if (task->bytes_left <= 0) {
+				task->state = DONE;
 			}
 			break;
 		case BODY:  // read from memory

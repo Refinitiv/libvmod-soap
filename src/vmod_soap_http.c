@@ -104,13 +104,3 @@ int http_content_encoding(struct http *http)
 	}
 	return CE_NONE;
 }
-
-unsigned long http_content_length(struct http *http)
-{
-	const char* content_length;
-
-	if (!http_GetHdr(http, H_Content_Length, &content_length)) {
-		return -1;
-	}
-	return strtoul(content_length, NULL, 10);
-}

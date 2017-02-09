@@ -30,7 +30,6 @@
 
 const char* http_status2str(const int status);
 int http_content_encoding(struct http *http);
-unsigned long http_content_length(struct http *http);
 
 // Content-Encoding types
 enum ce_type {
