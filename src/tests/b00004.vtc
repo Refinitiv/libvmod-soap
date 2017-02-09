@@ -27,7 +27,6 @@ varnish v1 -vcl+backend {
             else {
                     set req.http.soap-uuid = soap.xpath_body("ui:userIdentity/uuid:UUID");
             }
-            soap.cleanup();
     }
 } -start
 

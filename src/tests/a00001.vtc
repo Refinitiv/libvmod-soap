@@ -14,7 +14,6 @@ varnish v1 -vcl+backend {
     {
             if(soap.is_valid()) {
                     set req.http.soap-ws-ns = soap.action_namespace();
-                    soap.cleanup();
             }
             else {
                     return (synth(400, "Wrong SOAP message"));

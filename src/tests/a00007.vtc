@@ -6,7 +6,6 @@ varnish v1 -vcl+backend {
     sub vcl_recv
     {
             set req.http.soap = soap.action_namespace();
-            soap.cleanup();
     }
 } -start
 

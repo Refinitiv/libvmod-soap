@@ -41,11 +41,11 @@ struct soap_req_http {
 
 	enum ce_type		encoding;
 
-	apr_array_header_t	*bodyparts;   // HTTP payload stored as is
+	body_part		body;
 	z_stream		*compression_stream;
 };
 
-int read_body_part(struct soap_req_http *req_http, int bytes_left, body_part *uncompressed_body_part);
+int read_body_part(struct soap_req_http *req_http, int bytes_left);
 int convert_parts(struct soap_req_http *req_http, apr_array_header_t *parts, char **buf);
 
 void init_req_http(struct soap_req_http *req_http);

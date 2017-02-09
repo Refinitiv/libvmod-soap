@@ -31,37 +31,47 @@
 
 
 static ssize_t
-v1f_read(const struct vfp_ctx *vc, struct http_conn *htc, void *d, ssize_t len)
+fill_pipeline(struct soap_req_http *req_http, const struct vfp_ctx *vc, struct http_conn *htc, ssize_t len)
 {
+	char *buf;
 	ssize_t l;
-	unsigned char *p;
 	ssize_t i = 0;
 
 	CHECK_OBJ_NOTNULL(vc, VFP_CTX_MAGIC);
 	CHECK_OBJ_NOTNULL(htc, HTTP_CONN_MAGIC);
 	assert(len > 0);
 	l = 0;
-	p = d;
 	if (htc->pipeline_b) {
 		l = htc->pipeline_e - htc->pipeline_b;
 		assert(l > 0);
-		if (l > len)
-			l = len;
-		memcpy(p, htc->pipeline_b, l);
-		p += l;
+		if (l > len) {
+			return (l);
+		}
+		buf = (char*)apr_palloc(req_http->pool, len);
+		XXXAN(buf);
+
+		memcpy(buf, htc->pipeline_b, l);
 		len -= l;
-		htc->pipeline_b += l;
-		if (htc->pipeline_b == htc->pipeline_e)
-			htc->pipeline_b = htc->pipeline_e = NULL;
 	}
+	else {
+		buf = (char*)apr_palloc(req_http->pool, len);
+		XXXAN(buf);
+	}
+	htc->pipeline_b = buf;
+	htc->pipeline_e = buf + l;
 	if (len > 0) {
-		i = read(htc->fd, p, len);
+		i = read(htc->fd, htc->pipeline_e, len);
 		if (i < 0) {
+			if (htc->pipeline_b == htc->pipeline_e) {
+				htc->pipeline_b = NULL;
+				htc->pipeline_e = NULL;
+			}
 			// XXX: VTCP_Assert(i); // but also: EAGAIN
 			VSLb(vc->wrk->vsl, SLT_FetchError,
 			    "%s", strerror(errno));
 			return (i);
 		}
+		htc->pipeline_e = htc->pipeline_e + i;
 	}
 	return (i + l);
 }
@@ -69,88 +79,34 @@ v1f_read(const struct vfp_ctx *vc, struct http_conn *htc, void *d, ssize_t len)
 /* -------------------------------------------------------------------------------------/
    Read body part from varnish pipeline and uncompress the data if necessary
 */
-int read_body_part(struct soap_req_http *req_http, int bytes_left, body_part *uncompressed_body_part)
+int read_body_part(struct soap_req_http *req_http, int bytes_left)
 {
-	char *buf;
-	body_part *read_part;
 	int bytes_to_read;
 	int bytes_read;
 
-	buf = WS_Alloc(req_http->ctx->ws, BUFFER_SIZE);
 	bytes_to_read = bytes_left > BUFFER_SIZE ? BUFFER_SIZE : bytes_left;
-	bytes_read = v1f_read(req_http->ctx->req->htc->vfc, req_http->ctx->req->htc, buf, bytes_to_read);
+	bytes_read = fill_pipeline(req_http, req_http->ctx->req->htc->vfc, req_http->ctx->req->htc, bytes_to_read);
 	if (bytes_read <= 0)
 	{
+		VSLb(req_http->ctx->vsl, SLT_Error, "v1_read error (%d bytes)", bytes_read);
 		return bytes_read;
-	}
-	read_part = (body_part*)apr_palloc(req_http->pool, sizeof(body_part));
-	if (read_part == 0)
-	{
-		VSLb(req_http->ctx->vsl, SLT_Error, "Can't alloc memory (%ld bytes)", sizeof(body_part));
-		return -1;
 	}
 	VSLb(req_http->ctx->vsl, SLT_Debug, "v1_read %d bytes", bytes_read);
-	read_part->length = bytes_read;
-	read_part->data = apr_pmemdup(req_http->pool, buf, bytes_read);
-	APR_ARRAY_PUSH(req_http->bodyparts, body_part*) = read_part;
-	if (req_http->encoding == CE_NONE)
-	{
-		memcpy(uncompressed_body_part, read_part, sizeof(body_part));
+	if (req_http->encoding == CE_NONE) {
+		req_http->body.data = req_http->ctx->req->htc->pipeline_b;
+		req_http->body.length = req_http->ctx->req->htc->pipeline_e - req_http->ctx->req->htc->pipeline_b;
 		return bytes_read;
 	}
-	else if (uncompress_body_part(req_http->compression_stream, read_part, uncompressed_body_part, req_http->pool) == 0)
-	{
-		return bytes_read;
+	else {
+		// todo
+		VSLb(req_http->ctx->vsl, SLT_Error, "TODO");
+		return -1;
+		/*if (uncompress_body_part(req_http->compression_stream, read_part, uncompressed_body_part, req_http->pool) == 0) {
+			return bytes_read;
+			}*/
 	}
 	VSLb(req_http->ctx->vsl, SLT_Error, "Can't uncompress gzip body");
 	return -1;
-}
-
-/* -------------------------------------------------------------------------------------/
-   Convert set of body parts into one lineary arranged array
-*/
-int convert_parts(struct soap_req_http *req_http, apr_array_header_t *parts, char **buf)
-{
-	int i;
-	int length = 0;
-	for (i = 0; i < parts->nelts; i++)
-	{
-		length += APR_ARRAY_IDX(parts, i, body_part*)->length;
-	}
-	*buf = (char*)apr_palloc(req_http->pool, length);
-	int offset = 0;
-	for (i = 0; i < parts->nelts; i++)
-	{
-		memcpy(*buf + offset, APR_ARRAY_IDX(parts, i, body_part*)->data, APR_ARRAY_IDX(parts, i, body_part*)->length);
-		offset += APR_ARRAY_IDX(parts, i, body_part*)->length;
-	}
-	return length;
-}
-
-/* -----------------------------------------------------------------
-   --------------------/
-   Return data array back to varnish internal pipeline
-*/
-void return_buffer(struct soap_req_http *req_http, struct http_conn* htc, char* base, char* end)
-{
-	int size = end - base;
-	char *new_content;
-
-	VSLb(req_http->ctx->vsl, SLT_Debug, "return_buffer 0: %ld", htc->pipeline_e - htc->pipeline_b);
-	if (htc->pipeline_b != 0)
-	{
-		size += htc->pipeline_e - htc->pipeline_b;
-		new_content = (char*)apr_palloc(req_http->pool, size);
-		memcpy(new_content, base, end - base);
-		memcpy(new_content + (end - base), htc->pipeline_b, htc->pipeline_e - htc->pipeline_b);
-	}
-	else
-	{
-		new_content = base;
-	}
-	htc->pipeline_b = new_content;
-	htc->pipeline_e = new_content + size;
-	VSLb(req_http->ctx->vsl, SLT_Debug, "return_buffer 0: %ld", htc->pipeline_e - htc->pipeline_b);
 }
 
 void init_req_http(struct soap_req_http *req_http)
@@ -158,11 +114,10 @@ void init_req_http(struct soap_req_http *req_http)
 	AN(req_http);
 	VSLb(req_http->ctx->vsl, SLT_Debug, "init_req_http");
 
-	AZ(req_http->bodyparts);
 	req_http->encoding = http_content_encoding(req_http->ctx->http_req);
-	req_http->bodyparts = apr_array_make(req_http->pool, 16, sizeof(body_part*));
-	XXXAN(req_http->bodyparts);
-	init_gzip(req_http);
+	if (req_http->encoding == CE_GZIP) {
+		init_gzip(req_http);
+	}
 }
 
 /* -------------------------------------------------------------------------------------/
@@ -170,16 +125,14 @@ void init_req_http(struct soap_req_http *req_http)
 */
 void clean_req_http(struct soap_req_http *req_http)
 {
-	char *buf;
-	int offset;
-
 	AN(req_http);
-
-	if(req_http->bodyparts) {
-		VSLb(req_http->ctx->vsl, SLT_Debug, "clean_req_http");
-		offset = convert_parts(req_http, req_http->bodyparts, &buf);
-		return_buffer(req_http, req_http->ctx->req->htc, buf, buf + offset);
-		req_http->bodyparts = NULL;
+	VSLb(req_http->ctx->vsl, SLT_Debug, "clean_req_http");
+	if (req_http->encoding == CE_GZIP) {
+		if (req_http->body.data) {
+			free(req_http->body.data);
+			req_http->body.data = NULL;
+			req_http->body.length = 0;
+		}
 		clean_gzip(req_http);
 	}
 }

@@ -13,10 +13,8 @@ varnish v1 -vcl+backend {
     {
             set req.http.soap-ws-ns = soap.action_namespace();
             if(!req.http.soap-ws-ns) {
-                    soap.cleanup();
                     return (synth(400, "SOAP Action URI is mandatory"));
             }
-            soap.cleanup();
     }
 } -start
 

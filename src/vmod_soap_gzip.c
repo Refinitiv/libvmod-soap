@@ -54,8 +54,9 @@ void init_gzip(struct soap_req_http *req_http)
 void clean_gzip(struct soap_req_http *req_http)
 {
 	AN(req_http);
-	if (req_http->encoding != CE_NONE) {
+	if (req_http->compression_stream) {
 		inflateEnd(req_http->compression_stream);
+		req_http->compression_stream = NULL;
 	}
 }
 

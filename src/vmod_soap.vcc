@@ -36,7 +36,7 @@ $Event event_function
 $Function BOOL is_valid(PRIV_TASK)
 
 Returns TRUE if the request body is a valid SOAP message.
-If FALSE is returned, no need to call "cleanup()".
+
 
 
 $Function STRING action(PRIV_TASK)
@@ -66,13 +66,6 @@ $Function STRING xpath_body(PRIV_VCL, PRIV_TASK, STRING)
 Return xpath value in SOAP Body.
 It uses the namespace table (see `add_namespace`).
 
-
-$Function VOID cleanup(PRIV_TASK)
-
-Restore request in the varnish pipeline. Mandatory if any of the
-function above has been executed.
-Else, varnish will probably fail requests with "503 Backend
- fetch failed/FetchError: straight insufficient bytes"" error.
 
 $Function VOID synthetic(PRIV_TASK, INT, STRING)
 

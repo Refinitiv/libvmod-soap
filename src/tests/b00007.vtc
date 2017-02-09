@@ -19,10 +19,8 @@ varnish v1 -vcl+backend {
     {
             set req.http.soap-uuid = soap.xpath_body("ui:userIdentity/uuid:UUID");
             if(!req.http.soap-uuid || req.http.soap-uuid == "") {
-                    soap.cleanup();
                     return (synth(400, "SOAP UUID is mandatory"));
             }
-            soap.cleanup();
     }
 } -start
 

@@ -3,6 +3,7 @@ varnishtest "SOAP: VCL multiple identical calls"
 server s1 {
         rxreq
         expect req.http.soap-ws-name == "Test"
+        expect req.http.soap-ws-name1 == "Test"
         expect req.http.soap-ws-ns == "http://schemas.reuters.com/mytest"
         expect req.http.soap-ws-ns1 == "http://schemas.reuters.com/mytest"
         expect req.http.soap-ws-ns2 == "http://schemas.reuters.com/mytest"
@@ -16,21 +17,12 @@ varnish v1 -vcl+backend {
 
     sub vcl_recv
     {
-            soap.cleanup();
-            soap.cleanup();
-            soap.cleanup();
             set req.http.soap-ws-ns = soap.action_namespace();
-            soap.cleanup();
-            soap.cleanup();
+            set req.http.soap-ws-name1 = soap.action();
             set req.http.soap-ws-ns1 = soap.action_namespace();
             set req.http.soap-ws-ns2 = soap.action_namespace();
             set req.http.soap-ws-ns3 = soap.action_namespace();
-            soap.cleanup();
-            soap.cleanup();
             set req.http.soap-ws-name = soap.action();
-            soap.cleanup();
-            soap.cleanup();
-            soap.cleanup();
     }
 
 } -start

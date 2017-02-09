@@ -121,8 +121,12 @@ static void clean_task(void *priv)
 	AN(priv);
 	CAST_OBJ_NOTNULL(soap_task, priv, PRIV_SOAP_TASK_MAGIC);
 
-	// TODO: avoid memory leaks when vmod_cleanup() is not called
-	// Check internals of varnish to have a working version of "return_buffer"
+	clean_req_xml(soap_task->req_xml);
+	INIT_OBJ(soap_task->req_xml, SOAP_REQ_XML_MAGIC);
+
+	clean_req_http(soap_task->req_http);
+	INIT_OBJ(soap_task->req_http, SOAP_REQ_HTTP_MAGIC);
+
 	INIT_OBJ(soap_task->req_xml, SOAP_REQ_XML_MAGIC);
 	FREE_OBJ(soap_task->req_xml);
 
@@ -170,9 +174,7 @@ int process_request(struct priv_soap_task *task, enum soap_state state)
 				return (-1);
 			}
 			while (task->bytes_left > 0) {
-				// read http body & uncompress it
-				body_part uncompressed_body_part;
-				int bytes_read = read_body_part(task->req_http, task->bytes_left, &uncompressed_body_part);
+				int bytes_read = read_body_part(task->req_http, task->bytes_left);
 				if (bytes_read <= 0) {
 					VSLb(task->ctx->vsl, SLT_Error, "SOAP: http read failed (%d, errno: %d)", bytes_read, errno);
 					return (-1);
@@ -181,8 +183,8 @@ int process_request(struct priv_soap_task *task, enum soap_state state)
 				task->bytes_left -= bytes_read;
 
 				// parse chunk
-				VSLb(task->ctx->vsl, SLT_Debug, "process_request 7: tota %d bytes", uncompressed_body_part.length);
-				if (parse_soap_chunk(task->req_xml, uncompressed_body_part.data, uncompressed_body_part.length)) {
+				VSLb(task->ctx->vsl, SLT_Debug, "process_request 7: tota %d bytes", task->req_http->body.length);
+				if (parse_soap_chunk(task->req_xml, task->req_http->body.data, task->req_http->body.length)) {
 					VSLb(task->ctx->vsl, SLT_Error, "SOAP: soap read failed %d", errno);
 					return (-1);
 				}
@@ -271,13 +273,8 @@ VCL_BOOL __match_proto__(td_soap_is_valid)
 	vmod_is_valid(VRT_CTX, struct vmod_priv *priv /* PRIV_TASK */)
 {
 	struct priv_soap_task *soap_task = priv_soap_get(ctx, priv);
-	int ret;
 
-	ret = process_request(soap_task, HEADER);
-	if (ret == -1) {
-		vmod_cleanup(ctx, priv);
-	}
-	return (ret == 0);
+	return (process_request(soap_task, HEADER));
 }
 
 VCL_STRING __match_proto__(td_soap_action)
@@ -287,7 +284,6 @@ VCL_STRING __match_proto__(td_soap_action)
 	if(process_request(soap_task, HEADER) == 0) {
 		return (soap_task->req_xml->action_name);
 	}
-	vmod_cleanup(ctx, priv);
 	return ("");
 }
 
@@ -298,7 +294,6 @@ VCL_STRING __match_proto__(td_soap_action_namespace)
 	if(process_request(soap_task, HEADER) == 0) {
 		return (soap_task->req_xml->action_namespace);
 	}
-	vmod_cleanup(ctx, priv);
 	return ("");
 }
 
@@ -333,7 +328,6 @@ VCL_STRING __match_proto__(td_soap_xpath_header)
 	if(process_request(soap_task, HEADER) == 0) {
 		return (evaluate_xpath(soap_vcl, soap_task, soap_task->req_xml->header, xpath));
 	}
-	vmod_cleanup(ctx, priv_task);
 	return ("");
 }
 
@@ -352,7 +346,6 @@ VCL_STRING __match_proto__(td_soap_xpath_body)
 	if(process_request(soap_task, BODY) == 0) {
 		return (evaluate_xpath(soap_vcl, soap_task, soap_task->req_xml->body, xpath));
 	}
-	vmod_cleanup(ctx, priv_task);
 	return ("");
 }
 
@@ -365,21 +358,4 @@ VCL_VOID __match_proto__(td_soap_synthetic)
 	priv_soap_task = priv_soap_get(ctx, priv_task);
 
 	VRT_synth_page(ctx, "<soap>synth error</soap>");
-}
-
-VCL_VOID __match_proto__(td_soap_cleanup)
-	vmod_cleanup(VRT_CTX, struct vmod_priv *priv_task /* PRIV_TASK */)
-{
-	struct priv_soap_task *priv_soap_task;
-
-	AN(priv_task);
-	priv_soap_task = priv_soap_get(ctx, priv_task);
-	priv_soap_task->state = NONE;
-	priv_soap_task->bytes_left = 0;
-
-	clean_req_xml(priv_soap_task->req_xml);
-	INIT_OBJ(priv_soap_task->req_xml, SOAP_REQ_XML_MAGIC);
-
-	clean_req_http(priv_soap_task->req_http);
-	INIT_OBJ(priv_soap_task->req_http, SOAP_REQ_HTTP_MAGIC);
 }
