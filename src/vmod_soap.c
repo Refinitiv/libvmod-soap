@@ -165,17 +165,23 @@ int process_request(struct priv_soap_task *task, enum soap_state state)
 		case INIT:  // want header
 		case HEADER:  // want body
 			VSLb(task->ctx->vsl, SLT_Debug, "process_request 5: %d/%d (%ld bytes)", task->state, state, task->bytes_left);
+			if (task->bytes_left <= 0) {
+				VSLb(task->ctx->vsl, SLT_Error, "Not enough data");
+				return (-1);
+			}
 			while (task->bytes_left > 0) {
 				// read http body & uncompress it
 				body_part uncompressed_body_part;
 				int bytes_read = read_body_part(task->req_http, task->bytes_left, &uncompressed_body_part);
 				if (bytes_read <= 0) {
-					VSLb(task->ctx->vsl, SLT_Error, "SOAP: http read failed %d", errno);
+					VSLb(task->ctx->vsl, SLT_Error, "SOAP: http read failed (%d, errno: %d)", bytes_read, errno);
 					return (-1);
 				}
+				VSLb(task->ctx->vsl, SLT_Debug, "process_request 6: read %d bytes", bytes_read);
 				task->bytes_left -= bytes_read;
 
 				// parse chunk
+				VSLb(task->ctx->vsl, SLT_Debug, "process_request 7: tota %d bytes", uncompressed_body_part.length);
 				if (parse_soap_chunk(task->req_xml, uncompressed_body_part.data, uncompressed_body_part.length)) {
 					VSLb(task->ctx->vsl, SLT_Error, "SOAP: soap read failed %d", errno);
 					return (-1);
@@ -189,9 +195,6 @@ int process_request(struct priv_soap_task *task, enum soap_state state)
 					task->state = HEADER;
 					break;
 				}
-			}
-			if (task->bytes_left <= 0) {
-				task->state = DONE;
 			}
 			break;
 		case BODY:  // read from memory
@@ -284,6 +287,7 @@ VCL_STRING __match_proto__(td_soap_action)
 	if(process_request(soap_task, HEADER) == 0) {
 		return (soap_task->req_xml->action_name);
 	}
+	vmod_cleanup(ctx, priv);
 	return ("");
 }
 
@@ -294,6 +298,7 @@ VCL_STRING __match_proto__(td_soap_action_namespace)
 	if(process_request(soap_task, HEADER) == 0) {
 		return (soap_task->req_xml->action_namespace);
 	}
+	vmod_cleanup(ctx, priv);
 	return ("");
 }
 
@@ -328,6 +333,7 @@ VCL_STRING __match_proto__(td_soap_xpath_header)
 	if(process_request(soap_task, HEADER) == 0) {
 		return (evaluate_xpath(soap_vcl, soap_task, soap_task->req_xml->header, xpath));
 	}
+	vmod_cleanup(ctx, priv_task);
 	return ("");
 }
 
@@ -346,6 +352,7 @@ VCL_STRING __match_proto__(td_soap_xpath_body)
 	if(process_request(soap_task, BODY) == 0) {
 		return (evaluate_xpath(soap_vcl, soap_task, soap_task->req_xml->body, xpath));
 	}
+	vmod_cleanup(ctx, priv_task);
 	return ("");
 }
 

@@ -86,6 +86,7 @@ int read_body_part(struct soap_req_http *req_http, int bytes_left, body_part *un
 		VSLb(req_http->ctx->vsl, SLT_Error, "Can't alloc memory (%ld bytes)", sizeof(body_part));
 		return -1;
 	}
+	VSLb(req_http->ctx->vsl, SLT_Debug, "v1_read %d bytes", bytes_read);
 	read_part->length = bytes_read;
 	read_part->data = apr_pmemdup(req_http->pool, buf, bytes_read);
 	APR_ARRAY_PUSH(req_http->bodyparts, body_part*) = read_part;
