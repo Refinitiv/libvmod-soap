@@ -69,6 +69,7 @@ fill_pipeline(struct soap_req_http *req_http, const struct vfp_ctx *vc, struct h
 			// XXX: VTCP_Assert(i); // but also: EAGAIN
 			VSLb(vc->wrk->vsl, SLT_FetchError,
 			    "%s", strerror(errno));
+			req_http->ctx->req->req_body_status = REQ_BODY_FAIL;
 			return (i);
 		}
 		htc->pipeline_e = htc->pipeline_e + i;
@@ -112,8 +113,6 @@ int read_body_part(struct soap_req_http *req_http, int bytes_left)
 void init_req_http(struct soap_req_http *req_http)
 {
 	AN(req_http);
-	VSLb(req_http->ctx->vsl, SLT_Debug, "init_req_http");
-
 	req_http->encoding = http_content_encoding(req_http->ctx->http_req);
 	if (req_http->encoding == CE_GZIP) {
 		init_gzip(req_http);
