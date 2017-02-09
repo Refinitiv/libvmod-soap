@@ -1,1 +1,41 @@
 varnishtest "Content-Length differ from length of req body."
+
+server s1 {
+        rxreq
+        #expect req.http.soap-ws-ns == "http://schemas.reuters.com/mytest"
+        #expect req.http.content-length == 181
+        txresp -status 200
+} -start
+
+varnish v1 -vcl+backend {
+    import ${vmod_soap};
+
+    sub vcl_recv
+    {
+            if(soap.is_valid()) {
+                    set req.http.soap-ws-ns = soap.action_namespace();
+                    soap.cleanup();
+            }
+            else {
+                    return (synth(400, "Wrong SOAP message"));
+            }
+    }
+} -start
+
+varnish v1 -cliok "param.set debug +syncvsl"
+
+client c2 {
+        timeout 8
+        txreq -req POST -nolen -hdr "Content-Length: 420" -body {}
+        rxresp
+        expect resp.status == 400
+} -run
+
+client c3 {
+        timeout 8
+        txreq -req POST -body {<?xml version="1.0" encoding="utf-8"?>
+        <Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/"><Body>
+<Test xmlns="http://schemas.reuters.com/mytest"/></Body></Envelope>}
+        rxresp
+        expect resp.status == 200
+} -run

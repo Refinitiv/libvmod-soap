@@ -1,1 +1,40 @@
-varnishtest "SOAP: Request has no action URI."
+varnishtest "SOAP: Request has no action URI: TODO: fix or understand needed behavior."
+
+server s1 {
+        rxreq
+        expect req.http.soap-ws-ns == "http://schemas.reuters.com/mytest"
+        txresp
+} -start
+
+varnish v1 -vcl+backend {
+    import ${vmod_soap};
+
+    sub vcl_recv
+    {
+            set req.http.soap-ws-ns = soap.action_namespace();
+            if(!req.http.soap-ws-ns) {
+                    soap.cleanup();
+                    return (synth(400, "SOAP Action URI is mandatory"));
+            }
+            soap.cleanup();
+    }
+} -start
+
+client c1 {
+        timeout 8
+        txreq -req POST -body {<?xml version="1.0" encoding="utf-8"?>
+        <Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+<Header><userIdentity/></Header><Body>
+<Test/>
+</Body></Envelope>}
+        rxresp
+        expect resp.status == 400
+
+        txreq -req POST -body {<?xml version="1.0" encoding="utf-8"?>
+        <Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+<Header><userIdentity/></Header><Body>
+<Test xmlns="http://schemas.reuters.com/mytest"/>
+</Body></Envelope>}
+        rxresp
+        expect resp.status == 200
+} -run
