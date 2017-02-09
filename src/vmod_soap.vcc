@@ -32,6 +32,13 @@ DESCRIPTION
 
 $Event event_function
 
+
+$Function BOOL is_valid(PRIV_TASK)
+
+Returns TRUE if the request body is a valid SOAP message.
+If FALSE is returned, no need to call "cleanup()".
+
+
 $Function STRING action(PRIV_TASK)
 
 Return name of SOAP body's action

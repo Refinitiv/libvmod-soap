@@ -253,6 +253,19 @@ sess_record* priv_soap_get(VRT_CTX, struct vmod_priv *priv /* PRIV_TASK */)
 	return (priv_soap_task);
 }
 
+VCL_BOOL __match_proto__(td_soap_is_valid)
+	vmod_is_valid(VRT_CTX, struct vmod_priv *priv /* PRIV_TASK */)
+{
+	struct priv_soap_task *soap_task = priv_soap_get(ctx, priv);
+	int ret;
+
+	ret = process_request(soap_task, HEADER);
+	if (ret == -1) {
+		vmod_cleanup(ctx, priv);
+	}
+	return (ret == 0);
+}
+
 VCL_STRING __match_proto__(td_soap_action)
 	vmod_action(VRT_CTX, struct vmod_priv *priv /* PRIV_TASK */)
 {
@@ -260,7 +273,7 @@ VCL_STRING __match_proto__(td_soap_action)
 	if(process_request(soap_task, HEADER) == 0) {
 		return (soap_task->req_xml->action_name);
 	}
-	return ("TODO: ERROR");
+	return ("");
 }
 
 VCL_STRING __match_proto__(td_soap_action_namespace)
@@ -270,7 +283,7 @@ VCL_STRING __match_proto__(td_soap_action_namespace)
 	if(process_request(soap_task, HEADER) == 0) {
 		return (soap_task->req_xml->action_namespace);
 	}
-	return ("TODO: ERROR");
+	return ("");
 }
 
 VCL_VOID __match_proto__(td_soap_add_namespace)
@@ -304,7 +317,7 @@ VCL_STRING __match_proto__(td_soap_xpath_header)
 	if(process_request(soap_task, HEADER) == 0) {
 		return (evaluate_xpath(soap_vcl, soap_task, soap_task->req_xml->header, xpath));
 	}
-	return ("TODO: make SOAP error?");
+	return ("");
 }
 
 VCL_STRING __match_proto__(td_soap_xpath_body)
@@ -322,7 +335,7 @@ VCL_STRING __match_proto__(td_soap_xpath_body)
 	if(process_request(soap_task, BODY) == 0) {
 		return (evaluate_xpath(soap_vcl, soap_task, soap_task->req_xml->body, xpath));
 	}
-	return ("TODO: make SOAP error?");
+	return ("");
 }
 
 VCL_VOID __match_proto__(td_soap_synthetic)
