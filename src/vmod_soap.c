@@ -152,7 +152,7 @@ int process_request(struct priv_soap_task *task, enum soap_state state)
 			init_req_http(task->req_http);
 			if (task->req_http->encoding != CE_GZIP && task->req_http->encoding != CE_NONE) {
 				VSLb(task->ctx->vsl, SLT_Error, "Unsupported Content-Encoding");
-				return -1;
+				return (-1);
 			}
 
 			task->req_xml->pool = task->pool;
@@ -274,7 +274,7 @@ VCL_BOOL __match_proto__(td_soap_is_valid)
 {
 	struct priv_soap_task *soap_task = priv_soap_get(ctx, priv);
 
-	return (process_request(soap_task, HEADER));
+	return (process_request(soap_task, HEADER) == 0);
 }
 
 VCL_STRING __match_proto__(td_soap_action)

@@ -126,7 +126,6 @@ void init_req_http(struct soap_req_http *req_http)
 void clean_req_http(struct soap_req_http *req_http)
 {
 	AN(req_http);
-	VSLb(req_http->ctx->vsl, SLT_Debug, "clean_req_http");
 	if (req_http->encoding == CE_GZIP) {
 		if (req_http->body.data) {
 			free(req_http->body.data);
