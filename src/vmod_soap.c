@@ -256,7 +256,7 @@ int __match_proto__(vmod_event_f)
 
 sess_record* priv_soap_get(VRT_CTX, struct vmod_priv *priv /* PRIV_TASK */)
 {
-	struct priv_soap_task *priv_soap_task;
+	struct priv_soap_task *soap_task;
 
 	CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
 	AN(priv);
@@ -264,8 +264,17 @@ sess_record* priv_soap_get(VRT_CTX, struct vmod_priv *priv /* PRIV_TASK */)
 		priv->priv = init_task(ctx);
 		priv->free = clean_task;
 	}
-	CAST_OBJ_NOTNULL(priv_soap_task, priv->priv, PRIV_SOAP_TASK_MAGIC);
-	return (priv_soap_task);
+	CAST_OBJ_NOTNULL(soap_task, priv->priv, PRIV_SOAP_TASK_MAGIC);
+	if(soap_task->ctx != ctx) {
+		soap_task->ctx = ctx;
+		if(soap_task->req_http) {
+			soap_task->req_http->ctx = ctx;
+		}
+		if(soap_task->req_xml) {
+			soap_task->req_xml->ctx = ctx;
+		}
+	}
+	return (soap_task);
 }
 
 VCL_BOOL __match_proto__(td_soap_is_valid)
