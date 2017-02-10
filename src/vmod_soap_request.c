@@ -82,11 +82,9 @@ fill_pipeline(struct soap_req_http *req_http, const struct vfp_ctx *vc, struct h
 int read_body_part(struct soap_req_http *req_http, int bytes_left)
 {
 	body_part pipeline;
-	int bytes_to_read;
 	int bytes_read;
 
-	bytes_to_read = bytes_left > BUFFER_SIZE ? BUFFER_SIZE : bytes_left;
-	bytes_read = fill_pipeline(req_http, req_http->ctx->req->htc->vfc, req_http->ctx->req->htc, bytes_to_read);
+	bytes_read = fill_pipeline(req_http, req_http->ctx->req->htc->vfc, req_http->ctx->req->htc, bytes_left);
 	if (bytes_read <= 0)
 	{
 		VSLb(req_http->ctx->vsl, SLT_Error, "v1_read error (%d bytes)", bytes_read);
