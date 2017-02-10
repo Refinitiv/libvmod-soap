@@ -360,10 +360,10 @@ VCL_STRING __match_proto__(td_soap_xpath_body)
 VCL_VOID __match_proto__(td_soap_synthetic)
 	vmod_synthetic(VRT_CTX, struct vmod_priv *priv_task /* PRIV_TASK */, VCL_INT soap_code, VCL_STRING soap_message)
 {
-	struct priv_soap_task *priv_soap_task;
+	struct priv_soap_task *soap_task;
 
 	AN(priv_task);
-	priv_soap_task = priv_soap_get(ctx, priv_task);
+	soap_task = priv_soap_get(ctx, priv_task);
 
-	VRT_synth_page(ctx, "<soap>synth error</soap>");
+	synth_soap_fault(soap_task->req_xml, soap_code, soap_message);
 }

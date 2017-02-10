@@ -35,6 +35,8 @@
 
 
 const char* soap_versions[] = {0, "http://schemas.xmlsoap.org/soap/envelope/", "http://www.w3.org/2003/05/soap-envelope"};
+static const struct gethdr_s VGC_HDR_RESP_Content_2d_Type =
+{ HDR_RESP, "\015Content-Type:"};
 
 static xmlSAXHandler default_sax_handler;
 static xmlSAXHandler soap_sax_handler;
@@ -51,23 +53,20 @@ typedef struct _elem_info
 */
 void add_soap_error(struct soap_req_xml *req_xml, int status, const char* fmt, ...)
 {
-	struct soap_error_info* sei = NULL;
-
 	va_list args;
+
 	va_start(args,fmt);
-
-	if (!req_xml->error_info) {
-		req_xml->error_info = (struct soap_error_info*)apr_palloc(req_xml->pool, sizeof(struct soap_error_info));
-		memset(req_xml->error_info, 0, sizeof(struct soap_error_info));
+	syslog(LOG_ERR, "libvmod-soap, V_xid:%u, SOAP: %s", req_xml->ctx->sp->vxid, fmt);
+	if (req_xml->error_info == NULL) {
+		syslog(LOG_ERR, "libvmod-soap, SOAP create");
+		req_xml->error_info = WS_Alloc(req_xml->ctx->ws, sizeof(*req_xml->error_info));
+		XXXAN(req_xml->error_info);
+		INIT_OBJ(req_xml->error_info, SOAP_ERROR_INFO_MAGIC);
 	}
-	sei = (struct soap_error_info*)req_xml->error_info;
-	sei->ei.status = status;
-	sei->ei.message = apr_pvsprintf(req_xml->pool, fmt, args);
-	syslog(LOG_ERR, "libvmod-soap, V_xid:%u, SOAP: %s", req_xml->ctx->sp->vxid, sei->ei.message);
-
-	//TODO: sei->ei.synth_error = synth_soap_fault;
-	if (!sei->soap_version) sei->soap_version = SOAP11;
-
+	req_xml->error_info->soap_version = (req_xml->soap_version ? req_xml->soap_version : SOAP11);
+	req_xml->error_info->status = status;
+	req_xml->error_info->message = WS_Printf(req_xml->ctx->ws, fmt, args);
+	syslog(LOG_ERR, "libvmod-soap, V_xid:%u, SOAP: %s", req_xml->ctx->sp->vxid, req_xml->error_info->message);
 	va_end(args);
 }
 
@@ -266,22 +265,11 @@ void clean_req_xml(struct soap_req_xml *req_xml)
 /* -------------------------------------------------------------------------------------/
    create v11 or v12 soap fault
 */
-static xmlNodePtr create_soap_fault(xmlDocPtr doc, struct soap_error_info *info)
+static void create_soap_fault(xmlDocPtr doc, struct soap_error_info *info)
 {
-	xmlChar *soap_namespace;
-	if (info->soap_version == SOAP11)
-	{
-		soap_namespace = soap_versions[SOAP11];
-	}
-	else
-	{
-		soap_namespace = soap_versions[SOAP12];
-	}
+	AN(info->message);
 
-	if (!info->ei.message)
-		info->ei.message = "Internal Server Error";
-
-	xmlNsPtr soap_ns = xmlNewNs(0, soap_namespace, "soap");
+	xmlNsPtr soap_ns = xmlNewNs(NULL, soap_versions[info->soap_version], "soap");
 	xmlNodePtr soap_envelope = xmlNewNode(soap_ns, "Envelope");
 	soap_envelope->nsDef = soap_ns;
 	xmlDocSetRootElement(doc, soap_envelope);
@@ -300,45 +288,40 @@ static xmlNodePtr create_soap_fault(xmlDocPtr doc, struct soap_error_info *info)
 
 		xmlNodePtr fault_reason = xmlNewNode(soap_ns, "Reason");
 		xmlAddChild(soap_fault, fault_reason);
-		xmlNodePtr text = xmlNewTextChild(fault_reason, soap_ns, "Text", info->ei.message);
+		xmlNodePtr text = xmlNewTextChild(fault_reason, soap_ns, "Text", info->message);
 		xmlNewProp(text, "xml:lang", "en-US");
 	}
 	else
 	{
 		xmlNewTextChild(soap_fault, soap_ns, "faultcode", "soap:Receiver");
-		xmlNewTextChild(soap_fault, soap_ns, "faultstring", info->ei.message);
+		xmlNewTextChild(soap_fault, soap_ns, "faultstring", info->message);
 	}
-	return soap_fault;
 }
 
 /* -------------------------------------------------------------------------------------/
    synth SOAP fault
 */
-int synth_soap_fault(struct soap_req_xml *req_xml)
+void synth_soap_fault(struct soap_req_xml *req_xml, int code, const char* message)
 {
-	struct soap_error_info *info = (struct soap_error_info*)req_xml->error_info;
-	if (info != 0)
-	{
-		if (0 == info->ei.status)
-			info->ei.status = 500;
+	xmlDocPtr doc;
+	xmlChar *content;
+	int length;
 
-		VRT_l_resp_status(req_xml->ctx, info->ei.status);
-		VRT_l_resp_reason(req_xml->ctx, http_status2str(info->ei.status), vrt_magic_string_end );
-		xmlDocPtr doc = xmlNewDoc("1.0");
-		xmlNodePtr soap_fault = create_soap_fault(doc, info);
-		xmlChar *content;
-		int length;
-		xmlDocDumpMemory(doc, &content, &length);
-		VRT_synth_page(req_xml->ctx, content, vrt_magic_string_end);
-		xmlFree(content);
-		xmlFreeDoc(doc);
+	if (req_xml->error_info == NULL) {
+		add_soap_error(req_xml, code, message);
 	}
-	else
-	{
-		VRT_l_resp_status(req_xml->ctx, 500);
-		VRT_l_resp_reason(req_xml->ctx, http_status2str(500), vrt_magic_string_end );
-	}
-	return 0;
+	CHECK_OBJ_NOTNULL(req_xml->error_info, SOAP_ERROR_INFO_MAGIC);
+
+	doc = xmlNewDoc("1.0");
+	create_soap_fault(doc, req_xml->error_info);
+	xmlDocDumpMemory(doc, &content, &length);
+	VRT_synth_page(req_xml->ctx, content, vrt_magic_string_end);
+	VRT_SetHdr(req_xml->ctx, &VGC_HDR_RESP_Content_2d_Type,
+	    "application/soap+xml; charset=utf-8",
+	    vrt_magic_string_end
+	);
+	xmlFree(content);
+	xmlFreeDoc(doc);
 }
 
 int parse_soap_chunk(struct soap_req_xml *soap_req_xml, const char *data, int length)

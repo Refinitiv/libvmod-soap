@@ -32,16 +32,14 @@
 #include <libxml/parser.h>
 
 struct sess_record;
-struct error_info {
-	int status;
-	const char *message;
-	int (*synth_error)(struct sess_record *r);
-};
 
 struct soap_error_info
 {
-	struct error_info ei;
-	int soap_version;
+	unsigned		magic;
+#define SOAP_ERROR_INFO_MAGIC 0x5EAB1BC1
+	int			soap_version;
+	int			status;
+	const char		*message;
 };
 
 typedef struct soap_req_xml {
@@ -64,7 +62,7 @@ typedef struct soap_req_xml {
 	xmlNodePtr		body;
 } sax_parser_ctx;
 
-int synth_soap_fault(struct soap_req_xml *req_xml);
+void synth_soap_fault(struct soap_req_xml *req_xml, int code, const char* message);
 void init_xml();
 void clean_xml();
 void init_req_xml(struct soap_req_xml *req_xml);

@@ -1,0 +1,60 @@
+varnishtest "SOAP: test synth response"
+
+server s1 {
+        rxreq
+        expect req.url == "/plain"
+        txresp
+} -start
+
+varnish v1 -vcl+backend {
+    import ${vmod_soap};
+
+    sub vcl_recv
+    {
+            if(soap.is_valid()) {
+                    return (synth(800, "SOAP is devil"));
+            }
+    }
+
+    sub vcl_synth
+    {
+            if(resp.status == 800) {
+                    set resp.status = 400;
+                    soap.synthetic(42, "SOAP is devil");
+                    return (deliver);
+            }
+    }
+} -start
+
+client c1 {
+        timeout 8
+        txreq -url "/soap11" -req POST -body {<?xml version="1.0" encoding="utf-8"?>
+                <Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+                <Header></Header>
+                <Body><Test xmlns="http://schemas.reuters.com/mytest"/></Body>
+                </Envelope>
+        }
+        rxresp
+        expect resp.status == 400
+        expect resp.http.content-type == "application/soap+xml; charset=utf-8"
+        expect resp.body == {<?xml version="1.0"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body><soap:Fault><soap:faultcode>soap:Receiver</soap:faultcode><soap:faultstring>SOAP is devil</soap:faultstring></soap:Fault></soap:Body></soap:Envelope>
+}
+
+        txreq -url "/soap12" -req POST -body {<?xml version="1.0" encoding="utf-8"?>
+                <Envelope xmlns="http://www.w3.org/2003/05/soap-envelope">
+                <Header></Header>
+                <Body><Test xmlns="http://schemas.reuters.com/mytest"/></Body>
+                </Envelope>
+        }
+        rxresp
+        expect resp.status == 400
+        expect resp.http.content-type == "application/soap+xml; charset=utf-8"
+        expect resp.body == {<?xml version="1.0"?>
+<soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope"><soap:Body><soap:Fault><soap:Code><soap:Value>soap:Receiver</soap:Value></soap:Code><soap:Reason><soap:Text xml:lang="en-US">SOAP is devil</soap:Text></soap:Reason></soap:Fault></soap:Body></soap:Envelope>
+}
+
+        txreq -req GET -url "/plain"
+        rxresp
+        expect resp.status == 200
+} -run
