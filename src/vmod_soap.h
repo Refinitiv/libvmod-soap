@@ -88,13 +88,6 @@ typedef struct priv_soap_task {
 	ssize_t				bytes_left;
 } sess_record;
 
-// Common HTTP Headers
-static const char szContentLength[] = "\017Content-Length:";
-static const char szContentEncoding[] = "\021Content-Encoding:";
-
-static const struct gethdr_s VGC_HDR_REQ_Content_2d_Length = { HDR_REQ, szContentLength };
-static const struct gethdr_s VGC_HDR_BERESP_Content_2d_Length = { HDR_BERESP, szContentLength };
-
 #include "vmod_soap_request.h"
 #include "vmod_soap_gzip.h"
 #include "vmod_soap_xml.h"
