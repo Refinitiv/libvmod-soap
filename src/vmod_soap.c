@@ -25,7 +25,6 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <syslog.h>
 #include "vmod_soap.h"
 
 #define POOL_KEY "VRN_IH_PK"

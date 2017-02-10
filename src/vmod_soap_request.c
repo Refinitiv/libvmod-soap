@@ -29,7 +29,6 @@
 #include "vmod_soap_xml.h"
 #include "vmod_soap_gzip.h"
 
-
 static ssize_t
 fill_pipeline(struct soap_req_http *req_http, const struct vfp_ctx *vc, struct http_conn *htc, ssize_t len)
 {
@@ -82,6 +81,7 @@ fill_pipeline(struct soap_req_http *req_http, const struct vfp_ctx *vc, struct h
 */
 int read_body_part(struct soap_req_http *req_http, int bytes_left)
 {
+	body_part pipeline;
 	int bytes_to_read;
 	int bytes_read;
 
@@ -93,21 +93,16 @@ int read_body_part(struct soap_req_http *req_http, int bytes_left)
 		return bytes_read;
 	}
 	VSLb(req_http->ctx->vsl, SLT_Debug, "v1_read %d bytes", bytes_read);
+	pipeline.data = req_http->ctx->req->htc->pipeline_b;
+	pipeline.length = req_http->ctx->req->htc->pipeline_e - req_http->ctx->req->htc->pipeline_b;
 	if (req_http->encoding == CE_NONE) {
-		req_http->body.data = req_http->ctx->req->htc->pipeline_b;
-		req_http->body.length = req_http->ctx->req->htc->pipeline_e - req_http->ctx->req->htc->pipeline_b;
-		return bytes_read;
+		req_http->body = pipeline;
 	}
-	else {
-		// todo
-		VSLb(req_http->ctx->vsl, SLT_Error, "TODO");
+	else if (uncompress_body_part(req_http, &pipeline, &req_http->body) != 0) {
+		VSLb(req_http->ctx->vsl, SLT_Error, "Can't uncompress gzip body");
 		return -1;
-		/*if (uncompress_body_part(req_http->compression_stream, read_part, uncompressed_body_part, req_http->pool) == 0) {
-			return bytes_read;
-			}*/
 	}
-	VSLb(req_http->ctx->vsl, SLT_Error, "Can't uncompress gzip body");
-	return -1;
+	return bytes_read;
 }
 
 void init_req_http(struct soap_req_http *req_http)
@@ -127,7 +122,6 @@ void clean_req_http(struct soap_req_http *req_http)
 	AN(req_http);
 	if (req_http->encoding == CE_GZIP) {
 		if (req_http->body.data) {
-			free(req_http->body.data);
 			req_http->body.data = NULL;
 			req_http->body.length = 0;
 		}

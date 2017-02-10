@@ -63,18 +63,27 @@ void clean_gzip(struct soap_req_http *req_http)
 /* -------------------------------------------------------------------------------------/
    Decompress one part
 */
-int uncompress_body_part(z_stream *stream, body_part *compressed_body_part, body_part *uncompressed_body_part, apr_pool_t *pool)
+int uncompress_body_part(struct soap_req_http *req_http, body_part *compressed_body_part, body_part *uncompressed_body_part)
 {
-	Bytef buf[BUFFER_SIZE*8];
-	Bytef *res_buf = 0;
-	int res_len = 0;
-	int sts = 0;
+	char		*init;
+	z_stream	*stream;
+	char		*buf;
+	Bytef		*res_buf = 0;
+	int		res_len = 0;
+	int		sts = 0;
+
+	init = WS_Snapshot(req_http->ctx->ws);
+	buf = WS_Alloc(req_http->ctx->ws, cache_param->gzip_buffer);
+	XXXAN(buf);
+
+	stream = req_http->compression_stream;
+	AN(stream);
 	stream->next_in = (Bytef *)compressed_body_part->data;
 	stream->avail_in = compressed_body_part->length;
 	while(stream->avail_in > 0)
 	{
 		stream->next_out = buf;
-		stream->avail_out = BUFFER_SIZE*8;
+		stream->avail_out = cache_param->gzip_buffer;
 		int err = inflate(stream, Z_SYNC_FLUSH);
 		if (err != Z_OK && err != Z_STREAM_END)
 		{
@@ -82,14 +91,15 @@ int uncompress_body_part(z_stream *stream, body_part *compressed_body_part, body
 			break;
 		}
 		Bytef *new_buf = (Bytef*) malloc(stream->total_out);
-		memcpy(new_buf, res_buf, res_len);
-		memcpy(new_buf + res_len, buf, stream->next_out - buf);
+		if (res_buf) memcpy(new_buf, res_buf, res_len);
+		memcpy(new_buf + res_len, buf, stream->next_out - (Bytef*)buf);
 		if (res_buf) free(res_buf);
 		res_buf = new_buf;
-		res_len += stream->next_out - buf;
+		res_len += stream->next_out - (Bytef*)buf;
 	}
-	uncompressed_body_part->data = (char*)apr_pmemdup(pool, res_buf, res_len);
+	uncompressed_body_part->data = (char*)apr_pmemdup(req_http->pool, res_buf, res_len);
 	uncompressed_body_part->length = res_len;
-	free(res_buf);
+	if (res_buf) free(res_buf);
+	WS_Reset(req_http->ctx->ws, init);
 	return sts;
 }

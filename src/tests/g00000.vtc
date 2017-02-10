@@ -4,6 +4,7 @@ server s1 {
         rxreq
         expect req.http.soap-ws-ns == "http://schemas.reuters.com/mytest"
         expect req.http.content-encoding == "gzip"
+        expect req.http.content-length == "238"
         txresp -status 200
 } -start
 

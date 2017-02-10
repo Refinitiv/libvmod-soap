@@ -52,8 +52,6 @@
 
 #include "vmod_soap_http.h"
 
-#define BUFFER_SIZE 8192
-
 #define HANDLER_ERROR -1
 #define HANDLER_SUCCESS_NOT_MODIFIED 0
 #define HANDLER_SUCCESS_MODIFIED 1
