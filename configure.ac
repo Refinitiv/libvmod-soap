@@ -1,6 +1,6 @@
 AC_PREREQ([2.63])
 AC_INIT([libvmod-soap], [0.1], [], [vmod-soap])
-AC_COPYRIGHT([Copyright (c) 2011-2016 Varnish Software AS])
+AC_COPYRIGHT([Copyright (c) 2017 Thomson Reuters])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_AUX_DIR([build-aux])
 AC_CONFIG_SRCDIR(src/vmod_soap.vcc)
