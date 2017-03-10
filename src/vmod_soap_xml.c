@@ -31,7 +31,6 @@
 #include "vmod_soap_request.h"
 #include <libxml/xpath.h>
 #include <libxml/xpathInternals.h>
-#include <syslog.h>
 
 
 const char* soap_versions[] = {0, "http://schemas.xmlsoap.org/soap/envelope/", "http://www.w3.org/2003/05/soap-envelope"};
@@ -47,7 +46,6 @@ typedef struct _elem_info
 	const xmlChar *ns;
 } elem_info;
 
-
 /* -------------------------------------------------------------------------------------/
    store SOAP error
 */
@@ -56,9 +54,7 @@ void add_soap_error(struct soap_req_xml *req_xml, int status, const char* fmt, .
 	va_list args;
 
 	va_start(args,fmt);
-	syslog(LOG_ERR, "libvmod-soap, V_xid:%u, SOAP: %s", req_xml->ctx->sp->vxid, fmt);
 	if (req_xml->error_info == NULL) {
-		syslog(LOG_ERR, "libvmod-soap, SOAP create");
 		req_xml->error_info = WS_Alloc(req_xml->ctx->ws, sizeof(*req_xml->error_info));
 		XXXAN(req_xml->error_info);
 		INIT_OBJ(req_xml->error_info, SOAP_ERROR_INFO_MAGIC);
@@ -66,7 +62,7 @@ void add_soap_error(struct soap_req_xml *req_xml, int status, const char* fmt, .
 	req_xml->error_info->soap_version = (req_xml->soap_version ? req_xml->soap_version : SOAP11);
 	req_xml->error_info->status = status;
 	req_xml->error_info->message = WS_Printf(req_xml->ctx->ws, fmt, args);
-	syslog(LOG_ERR, "libvmod-soap, V_xid:%u, SOAP: %s", req_xml->ctx->sp->vxid, req_xml->error_info->message);
+	VSLb(req_xml->ctx, SLT_Error, req_xml->error_info->message);
 	va_end(args);
 }
 
