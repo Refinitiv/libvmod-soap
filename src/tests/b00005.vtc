@@ -1,6 +1,10 @@
-varnishtest "SOAP: Request has no action URI: TODO: fix or understand needed behavior."
+varnishtest "SOAP: Request has no action URI: NS is inherited from its parent"
 
 server s1 {
+        rxreq
+        expect req.http.soap-ws-ns == "http://schemas.xmlsoap.org/soap/envelope"
+        txresp
+
         rxreq
         expect req.http.soap-ws-ns == "http://schemas.reuters.com/mytest"
         txresp
@@ -26,7 +30,7 @@ client c1 {
 <Test/>
 </Body></Envelope>}
         rxresp
-        expect resp.status == 400
+        expect resp.status == 200
 
         txreq -req POST -body {<?xml version="1.0" encoding="utf-8"?>
         <Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
