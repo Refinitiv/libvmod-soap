@@ -33,7 +33,14 @@
 #include <libxml/xpathInternals.h>
 
 
-const char* soap_versions[] = {0, "http://schemas.xmlsoap.org/soap/envelope/", "http://www.w3.org/2003/05/soap-envelope"};
+#define XMLSTR(x) ((const xmlChar*)x)
+
+const xmlChar* soap_versions[] = {
+	0,
+	XMLSTR("http://schemas.xmlsoap.org/soap/envelope/"),
+	XMLSTR("http://www.w3.org/2003/05/soap-envelope")
+};
+
 static const struct gethdr_s VGC_HDR_RESP_Content_2d_Type =
 { HDR_RESP, "\015Content-Type:"};
 
@@ -84,14 +91,14 @@ const char* evaluate_xpath(struct priv_soap_vcl *soap_vcl, struct priv_soap_task
 	XXXAN(xpathCtx);
 
 	VSLIST_FOREACH(ns, &soap_vcl->namespaces, list) {
-		if (xmlXPathRegisterNs(xpathCtx, ns->prefix, ns->uri)) {
+		if (xmlXPathRegisterNs(xpathCtx, XMLSTR(ns->prefix), XMLSTR(ns->uri))) {
 			VSLb(soap_task->ctx->vsl, SLT_Error, "SOAP: can't register ns (%s,%s)", ns->prefix, ns->uri);
 			return ("TODO: mark ERROR");
 		}
 	}
 
 	xpathCtx->node = node;
-	xpathObj = xmlXPathEvalExpression(xpath, xpathCtx);
+	xpathObj = xmlXPathEvalExpression(XMLSTR(xpath), xpathCtx);
 	if(xpathObj == NULL) {
 		xmlXPathFreeContext(xpathCtx);
 		VSLb(soap_task->ctx->vsl, SLT_Error, "SOAP: can't validate xpath %s", xpath);
@@ -101,7 +108,7 @@ const char* evaluate_xpath(struct priv_soap_vcl *soap_vcl, struct priv_soap_task
 	for (i = 0; i < (xpathObj->nodesetval ? xpathObj->nodesetval->nodeNr : 0); i++) {
 		if( xpathObj->nodesetval->nodeTab[i]->children &&
 		    xpathObj->nodesetval->nodeTab[i]->children->content ) {
-			return (xpathObj->nodesetval->nodeTab[i]->children->content);
+			return ((const char*)(xpathObj->nodesetval->nodeTab[i]->children->content));
 		}
 	}
 
@@ -142,7 +149,7 @@ static void start_element_ns(void *ptr,
 	switch (level) //level means element depth
 	{
 	case 0:	 //null depth only envelope is acceptable
-		if (xmlStrEqual(localname, "Envelope"))
+		if (xmlStrEqual(localname, XMLSTR("Envelope")))
 		{
 			if (xmlStrstr(URI, soap_versions[SOAP11]) != 0)
 				sax_ctx->soap_version = SOAP11;
@@ -163,9 +170,9 @@ static void start_element_ns(void *ptr,
 		}
 		break;
 	case 1:
-		if (xmlStrEqual(localname, "Header") && xmlStrEqual(URI, soap_versions[sax_ctx->soap_version]))
+		if (xmlStrEqual(localname, XMLSTR("Header")) && xmlStrEqual(URI, soap_versions[sax_ctx->soap_version]))
 			sax_ctx->header = xml_parser->node;
-		else if (xmlStrEqual(localname, "Body") && xmlStrEqual(URI, soap_versions[sax_ctx->soap_version]))
+		else if (xmlStrEqual(localname, XMLSTR("Body")) && xmlStrEqual(URI, soap_versions[sax_ctx->soap_version]))
 			sax_ctx->body = xml_parser->node;
 		else {
 			sax_ctx->error = WS_Printf(sax_ctx->ctx->ws, "Invalid XML tag <%s> found (namespace: %s).", localname, URI);
@@ -176,10 +183,10 @@ static void start_element_ns(void *ptr,
 	case 2:
 		parent = APR_ARRAY_IDX(sax_ctx->parent_stack, level - 1, elem_info*);
 		//looking for routing element - first child of soap:Body
-		if (xmlStrEqual(parent->localname, "Body") && !sax_ctx->action_name ) 
+		if (xmlStrEqual(parent->localname, XMLSTR("Body")) && !sax_ctx->action_name )
 		{
-			sax_ctx->action_namespace = WS_Copy(sax_ctx->ctx->ws, URI, strlen(URI) + 1);
-			sax_ctx->action_name = WS_Copy(sax_ctx->ctx->ws, localname, strlen(localname) + 1);
+			sax_ctx->action_namespace = WS_Copy(sax_ctx->ctx->ws, URI, xmlStrlen(URI) + 1);
+			sax_ctx->action_name = WS_Copy(sax_ctx->ctx->ws, localname, xmlStrlen(localname) + 1);
 			int len = xmlStrlen(URI) - 1;
 			if ( sax_ctx->action_namespace && sax_ctx->action_namespace[len] == '/') ((char*)sax_ctx->action_namespace)[len] = '\0';
 		}
@@ -200,19 +207,19 @@ static void end_element_ns (void *ptr,
 {
 	xmlParserCtxtPtr xml_parser = (xmlParserCtxtPtr)ptr;
 	sax_parser_ctx* sax_ctx = (sax_parser_ctx*)xml_parser->_private;
-    
-	apr_array_pop(sax_ctx->parent_stack);	
-	if (xmlStrEqual(localname, "Header") && xmlStrstr(URI, soap_versions[sax_ctx->soap_version]))
+
+	apr_array_pop(sax_ctx->parent_stack);
+	if (xmlStrEqual(localname, XMLSTR("Header")) && xmlStrstr(URI, soap_versions[sax_ctx->soap_version]))
 	{
 		sax_ctx->header = xml_parser->node;
 	}
-	else if (xmlStrEqual(localname, "Body") && xmlStrstr(URI, soap_versions[sax_ctx->soap_version]))
+	else if (xmlStrEqual(localname, XMLSTR("Body")) && xmlStrstr(URI, soap_versions[sax_ctx->soap_version]))
 	{
 		sax_ctx->body = xml_parser->node;
 		sax_ctx->stop = 1;
 		xmlStopParser(xml_parser);
-	}    
-    
+	}
+
 	default_sax_handler.endElementNs(ptr, localname, prefix, URI);
 }
 
@@ -265,32 +272,32 @@ static void create_soap_fault(xmlDocPtr doc, struct soap_error_info *info)
 {
 	AN(info->message);
 
-	xmlNsPtr soap_ns = xmlNewNs(NULL, soap_versions[info->soap_version], "soap");
-	xmlNodePtr soap_envelope = xmlNewNode(soap_ns, "Envelope");
+	xmlNsPtr soap_ns = xmlNewNs(NULL, soap_versions[info->soap_version], XMLSTR("soap"));
+	xmlNodePtr soap_envelope = xmlNewNode(soap_ns, XMLSTR("Envelope"));
 	soap_envelope->nsDef = soap_ns;
 	xmlDocSetRootElement(doc, soap_envelope);
 
-	xmlNodePtr soap_body = xmlNewNode(soap_ns, "Body");
+	xmlNodePtr soap_body = xmlNewNode(soap_ns, XMLSTR("Body"));
 	xmlAddChild(soap_envelope, soap_body);
 
-	xmlNodePtr soap_fault = xmlNewNode(soap_ns, "Fault");
+	xmlNodePtr soap_fault = xmlNewNode(soap_ns, XMLSTR("Fault"));
 	xmlAddChild(soap_body, soap_fault);
 
 	if (info->soap_version == SOAP12)
 	{
-		xmlNodePtr fault_code = xmlNewNode(soap_ns, "Code");
+		xmlNodePtr fault_code = xmlNewNode(soap_ns, XMLSTR("Code"));
 		xmlAddChild(soap_fault, fault_code);
-		xmlNewTextChild(fault_code, soap_ns, "Value", "soap:Receiver");
+		xmlNewTextChild(fault_code, soap_ns, XMLSTR("Value"), XMLSTR("soap:Receiver"));
 
-		xmlNodePtr fault_reason = xmlNewNode(soap_ns, "Reason");
+		xmlNodePtr fault_reason = xmlNewNode(soap_ns, XMLSTR("Reason"));
 		xmlAddChild(soap_fault, fault_reason);
-		xmlNodePtr text = xmlNewTextChild(fault_reason, soap_ns, "Text", info->message);
-		xmlNewProp(text, "xml:lang", "en-US");
+		xmlNodePtr text = xmlNewTextChild(fault_reason, soap_ns, XMLSTR("Text"), XMLSTR(info->message));
+		xmlNewProp(text, XMLSTR("xml:lang"), XMLSTR("en-US"));
 	}
 	else
 	{
-		xmlNewTextChild(soap_fault, soap_ns, "faultcode", "soap:Receiver");
-		xmlNewTextChild(soap_fault, soap_ns, "faultstring", info->message);
+		xmlNewTextChild(soap_fault, soap_ns, XMLSTR("faultcode"), XMLSTR("soap:Receiver"));
+		xmlNewTextChild(soap_fault, soap_ns, XMLSTR("faultstring"), XMLSTR(info->message));
 	}
 }
 
@@ -308,10 +315,10 @@ void synth_soap_fault(struct soap_req_xml *req_xml, int code, const char* messag
 	}
 	CHECK_OBJ_NOTNULL(req_xml->error_info, SOAP_ERROR_INFO_MAGIC);
 
-	doc = xmlNewDoc("1.0");
+	doc = xmlNewDoc(XMLSTR("1.0"));
 	create_soap_fault(doc, req_xml->error_info);
 	xmlDocDumpMemory(doc, &content, &length);
-	VRT_synth_page(req_xml->ctx, content, vrt_magic_string_end);
+	VRT_synth_page(req_xml->ctx, (const char*)content, vrt_magic_string_end);
 	VRT_SetHdr(req_xml->ctx, &VGC_HDR_RESP_Content_2d_Type,
 	    "application/soap+xml; charset=utf-8",
 	    vrt_magic_string_end

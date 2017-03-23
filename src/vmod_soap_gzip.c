@@ -82,7 +82,7 @@ int uncompress_body_part(struct soap_req_http *req_http, body_part *compressed_b
 	stream->avail_in = compressed_body_part->length;
 	while(stream->avail_in > 0)
 	{
-		stream->next_out = buf;
+		stream->next_out =(Bytef*) buf;
 		stream->avail_out = cache_param->gzip_buffer;
 		int err = inflate(stream, Z_SYNC_FLUSH);
 		if (err != Z_OK && err != Z_STREAM_END)
@@ -90,7 +90,7 @@ int uncompress_body_part(struct soap_req_http *req_http, body_part *compressed_b
 			sts = 1;
 			break;
 		}
-		Bytef *new_buf = (Bytef*) malloc(stream->total_out);
+		Bytef *new_buf = (Bytef*)malloc(stream->total_out);
 		if (res_buf) memcpy(new_buf, res_buf, res_len);
 		memcpy(new_buf + res_len, buf, stream->next_out - (Bytef*)buf);
 		if (res_buf) free(res_buf);
