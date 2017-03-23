@@ -3,7 +3,9 @@ AM_CFLAGS = $(VARNISHAPI_CFLAGS) -Wall -Werror \
 	-I/usr/include/apr-1 \
 	-I$(VARNISHSRC)
 
-AM_LDFLAGS = $(VARNISHAPI_LIBS) $(VMOD_LDFLAGS)
+AM_LDFLAGS = $(VARNISHAPI_LIBS) $(VMOD_LDFLAGS) \
+	-lxml2 \
+	-lapr-1
 
 vmod_LTLIBRARIES = libvmod_soap.la
 
