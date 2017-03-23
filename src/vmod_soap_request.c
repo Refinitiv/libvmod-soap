@@ -30,13 +30,12 @@
 #include "vmod_soap_gzip.h"
 
 static ssize_t
-fill_pipeline(struct soap_req_http *req_http, const struct vfp_ctx *vc, struct http_conn *htc, ssize_t len)
+fill_pipeline(struct soap_req_http *req_http, struct http_conn *htc, ssize_t len)
 {
 	char *buf;
 	ssize_t l;
 	ssize_t i = 0;
 
-	CHECK_OBJ_NOTNULL(vc, VFP_CTX_MAGIC);
 	CHECK_OBJ_NOTNULL(htc, HTTP_CONN_MAGIC);
 	assert(len > 0);
 	l = 0;
@@ -66,7 +65,7 @@ fill_pipeline(struct soap_req_http *req_http, const struct vfp_ctx *vc, struct h
 				htc->pipeline_e = NULL;
 			}
 			// XXX: VTCP_Assert(i); // but also: EAGAIN
-			VSLb(vc->wrk->vsl, SLT_FetchError,
+			VSLb(req_http->ctx->vsl, SLT_FetchError,
 			    "%s", strerror(errno));
 			req_http->ctx->req->req_body_status = REQ_BODY_FAIL;
 			return (i);
@@ -84,7 +83,7 @@ int read_body_part(struct soap_req_http *req_http, int bytes_left)
 	body_part pipeline;
 	int bytes_read;
 
-	bytes_read = fill_pipeline(req_http, req_http->ctx->req->htc->vfc, req_http->ctx->req->htc, bytes_left);
+	bytes_read = fill_pipeline(req_http, req_http->ctx->req->htc, bytes_left);
 	if (bytes_read <= 0)
 	{
 		VSLb(req_http->ctx->vsl, SLT_Error, "v1_read error (%d bytes)", bytes_read);
