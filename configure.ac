@@ -26,7 +26,7 @@ AC_ARG_WITH([rst2man],
 	[RST2MAN="$withval"],
 	AC_CHECK_PROGS(RST2MAN, [rst2man rst2man.py], []))
 
-m4_ifndef([VARNISH_PREREQ], AC_MSG_ERROR([Need varnish.m4 -- see README.rst]))
+m4_ifndef([VARNISH_PREREQ], AC_MSG_ERROR([Need varnish.m4 -- see README.md]))
 
 VARNISH_PREREQ([4.1], [5.0.0])
 VARNISH_VMODS([soap])
