@@ -69,7 +69,7 @@ void add_soap_error(struct soap_req_xml *req_xml, int status, const char* fmt, .
 	req_xml->error_info->soap_version = (req_xml->soap_version ? req_xml->soap_version : SOAP11);
 	req_xml->error_info->status = status;
 	req_xml->error_info->message = WS_Printf(req_xml->ctx->ws, fmt, args);
-	VSLb(req_xml->ctx->vsl, SLT_Error, req_xml->error_info->message);
+	VSLb(req_xml->ctx->vsl, SLT_Error, "%s", req_xml->error_info->message);
 	va_end(args);
 }
 
