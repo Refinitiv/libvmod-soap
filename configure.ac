@@ -1,5 +1,5 @@
 AC_PREREQ([2.63])
-AC_INIT([libvmod-soap], [0.1], [], [vmod-soap])
+AC_INIT([libvmod-soap], [1.0], [], [vmod-soap])
 AC_COPYRIGHT([Copyright (c) 2017 Thomson Reuters])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_AUX_DIR([build-aux])
@@ -30,6 +30,14 @@ m4_ifndef([VARNISH_PREREQ], AC_MSG_ERROR([Need varnish.m4 -- see README.rst]))
 
 VARNISH_PREREQ([4.1], [5.0.0])
 VARNISH_VMODS([soap])
+
+AC_SUBST([VARNISHSRC])
+AC_ARG_VAR([VARNISHSRC], [path to Varnish source tree])
+AS_IF([test "x${VARNISHSRC}" = "x" ], AC_MSG_FAILURE([\$VARNISHSRC is not set]), AC_MSG_RESULT([yes]))
+AC_CHECK_FILE([$VARNISHSRC/include/vrt.h],
+        [],
+        [AC_MSG_FAILURE([\$VARNISHSRC "$VARNISHSRC" is not a Varnish source directory])]
+)
 
 VMOD_TESTS="$(cd $srcdir/src && echo tests/*.vtc)"
 AC_SUBST(VMOD_TESTS)

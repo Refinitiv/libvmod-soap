@@ -1,22 +1,18 @@
 AM_CFLAGS = $(VARNISHAPI_CFLAGS) -Wall -Werror \
-	 -I/usr/include/libxml2 \
+	-I/usr/include/libxml2 \
 	-I/usr/include/apr-1 \
-	-Wno-pointer-sign -Wno-error \
-	-I$(VARNISHSRC)/bin/varnishd/ \
-	-I$(VARNISHSRC) \
-	-I$(VARNISHSRC)/include
+	-I$(VARNISHSRC)
 
-AM_LDFLAGS = $(VARNISHAPI_LIBS) $(VMOD_LDFLAGS) \
-	-lxml2 -lz -lm -lapr-1
+AM_LDFLAGS = $(VARNISHAPI_LIBS) $(VMOD_LDFLAGS)
 
 vmod_LTLIBRARIES = libvmod_soap.la
 
 libvmod_soap_la_SOURCES = \
+	vmod_soap.c \
 	vmod_soap_http.c \
 	vmod_soap_gzip.c \
 	vmod_soap_xml.c \
-	vmod_soap_request.c \
-	vmod_soap.c
+	vmod_soap_request.c
 
 nodist_libvmod_soap_la_SOURCES = \
 	vcc_soap_if.c \
