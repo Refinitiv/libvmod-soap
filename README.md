@@ -6,7 +6,55 @@ SOAP VMOD compatible with Varnish 4 and 5.
 
 ``libvmod-soap`` reads SOAP XML basic elements in HTTP request body (by using ``action``, ``uri``, and/or  ``xpath``). It allows users to use VCL with these SOAP values.
 
-Functions
+Usage and Examples
+=============
+For a given SOAP XML message stored in Request's body :
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/"><Body>
+<Login xmlns="http://website.com/auth">
+    <Username xmlns="http://website.com/user">JohnDoe</Username>
+    <Password xmlns="http://website.com/user">foobar</Password>
+</Login>
+</Body></Envelope>}
+```
+
+Select backend accordingly to the value of SOAP action:
+```vcl
+import soap;
+sub vcl_recv {
+    if(soap.action() == "Login") {
+        set req.backend_hint = soap_login;
+    }
+}
+```
+
+Verify action namespace:
+```vcl
+import soap;
+sub vcl_recv {
+    if(soap.action_namespace() !~ "^http://website.com") {
+        return (soap.synth(400, "Bad SOAP namespace"));
+    }
+}
+```
+
+Search XPath values and put it into HTTP headers
+```vcl
+import soap;
+sub vcl_init {
+        soap.add_namespace("a", "http://website.com/auth");
+        soap.add_namespace("u", "http://website.com/user");
+}
+sub vcl_recv {
+        set req.http.user-id = soap.xpath_body("a:Login/u:User");
+        set req.http.user-pwd = soap.xpath_body("a:Login/u:Password");
+}
+```
+
+Looking for more ? See other examples on https://github.com/thomsonreuters/libvmod-soap/tree/master/src/tests. 
+
+VMOD Interface
 =============
 
 ```
@@ -50,27 +98,6 @@ Creates a SOAP synthetic response's body containing SOAP FaultCode and
 FaultMessage. Note that FaultMessage contains any internal errors found.
 Format of the response depends of the SOAP version of the request (either 1.1 or 1.2).
 
-Examples
-=============
-
-Select backend accordingly to the value of SOAP action in a request POST's body:
-
-Request's body :
-```
-<?xml version="1.0" encoding="utf-8"?>
-<Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/"><Body>
-<Login/>
-</Body></Envelope>}
-```
-Varnish VCL code :
-```
-import soap;
-sub vcl_recv {
-    if(soap.action() == "Login") {
-        set req.backend_hint = soap_login;
-    }
-}
-```
 
 Copyright
 =============
