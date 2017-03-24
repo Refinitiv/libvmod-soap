@@ -5,6 +5,7 @@ libvmod-soap [![Build Status](https://travis-ci.org/thomsonreuters/libvmod-soap.
 SOAP VMOD compatible with Varnish 4 and 5.
 
 ``libvmod-soap`` reads SOAP XML basic elements in HTTP request body (by using ``action``, ``uri``, and/or  ``xpath``). It allows users to use VCL with these SOAP values.
+The ``action`` is the application-specific operation. It is defined as the first element in the ``<Body>`` Node.
 
 Usage and Examples
 =============
@@ -12,10 +13,10 @@ For a given SOAP XML message stored in Request's body :
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
 <Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/"><Body>
-<Login xmlns="http://website.com/auth">
-    <Username xmlns="http://website.com/user">JohnDoe</Username>
-    <Password xmlns="http://website.com/user">foobar</Password>
-</Login>
+<a:Login xmlns:a="http://your/namespace/uri/auth">
+    <a:Username>JohnDoe</a:Username>
+    <a:Password>foobar</a:Password>
+</a:Login>
 </Body></Envelope>}
 ```
 
@@ -44,11 +45,10 @@ Search XPath values and put it into HTTP headers
 import soap;
 sub vcl_init {
         soap.add_namespace("a", "http://website.com/auth");
-        soap.add_namespace("u", "http://website.com/user");
 }
 sub vcl_recv {
-        set req.http.user-id = soap.xpath_body("a:Login/u:User");
-        set req.http.user-pwd = soap.xpath_body("a:Login/u:Password");
+        set req.http.user-id = soap.xpath_body("a:Login/a:User");
+        set req.http.user-pwd = soap.xpath_body("a:Login/a:Password");
 }
 ```
 
