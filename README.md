@@ -13,10 +13,10 @@ For a given SOAP XML message stored in Request's body :
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
 <Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/"><Body>
-<a:Login xmlns:a="http://your/namespace/uri/auth">
-    <a:Username>JohnDoe</a:Username>
-    <a:Password>foobar</a:Password>
-</a:Login>
+<auth:Login xmlns:auth="http://your/namespace/uri/auth">
+    <auth:Username>JohnDoe</auth:Username>
+    <auth:Password>foobar</auth:Password>
+</auth:Login>
 </Body></Envelope>}
 ```
 
@@ -34,7 +34,7 @@ Verify action namespace:
 ```vcl
 import soap;
 sub vcl_recv {
-    if(soap.action_namespace() !~ "^http://website.com") {
+    if(soap.action_namespace() !~ "^http://your/namespace/uri/") {
         return (soap.synth(400, "Bad SOAP namespace"));
     }
 }
@@ -44,7 +44,7 @@ Search XPath values and put it into HTTP headers
 ```vcl
 import soap;
 sub vcl_init {
-        soap.add_namespace("a", "http://website.com/auth");
+        soap.add_namespace("a", "http://your/namespace/uri/auth");
 }
 sub vcl_recv {
         set req.http.user-id = soap.xpath_body("a:Login/a:User");
