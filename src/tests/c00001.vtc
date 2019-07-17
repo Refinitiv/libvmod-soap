@@ -1,0 +1,94 @@
+varnishtest "Testing data partialy available for read"
+
+server s1 {
+        rxreq
+        expect req.http.soap-ws-ns == "http://schemas.reuters.com/mytest1"
+        txresp -status 200
+
+        rxreq
+        expect req.http.soap-ws-ns == "http://schemas.reuters.com/mytest2"
+        txresp -status 200
+
+        rxreq
+        expect req.http.soap-ws-ns == "http://schemas.reuters.com/mytest3"
+        txresp -status 200
+
+        rxreq
+        expect req.http.soap-ws-ns == "http://schemas.reuters.com/mytest4"
+        txresp -status 200
+
+        rxreq
+        expect req.http.soap-ws-ns == "http://schemas.reuters.com/mytest5"
+        txresp -status 200
+} -start
+
+varnish v1 -vcl+backend {
+    import ${vmod_soap};
+
+    sub vcl_recv
+    {
+            if(soap.is_valid()) {
+                    set req.http.soap-ws-ns = soap.action_namespace();
+            }
+            else {
+                    return (synth(400, "Wrong SOAP message"));
+            }
+    }
+} -start
+
+# Test everything in one chunk
+client c1 {
+        timeout 4
+        txreq -req POST -hdr "Content-length: 204"
+        send {<?xml version="1.0" encoding="utf-8"?><Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/"><Header><userIdentity/></Header><Body><Test xmlns="http://schemas.reuters.com/mytest1"/></Body></Envelope>}
+        rxresp
+        expect resp.status == 200
+} -run
+
+# Test chuked data without header in first chunk
+client c2 {
+        timeout 4
+        txreq -req POST -hdr "Content-length: 204"
+        send {<?xml version="1.0" encoding="utf-8"?><Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">}
+        send {<Header><userIdentity/></Header><Body><Test xmlns="http://schemas.reuters.com/mytest2"/></Body></Envelope>}
+#        send "\r\n\r\n"
+        rxresp
+        expect resp.status == 200
+} -run
+
+# Test chunked data with header partialy available in first chunk
+client c3 {
+        timeout 4
+        txreq -req POST -hdr "Content-length: 204"
+        send {<?xml version="1.0" encoding="utf-8"?><Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/"><Header><userIden}
+        send {tity/></Header><Body><Test xmlns="http://schemas.reuters.com/mytest3"/></Body></Envelope>}
+#        send "\r\n\r\n"
+        rxresp
+        expect resp.status == 200
+} -run
+
+# Test chunked data with whole header available in first chunk
+client c4 {
+        timeout 4
+        txreq -req POST -hdr "Content-length: 204"
+        send {<?xml version="1.0" encoding="utf-8"?><Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/"><Header><userIdentity/></Header><Bo}
+        send {dy><Test xmlns="http://schemas.reuters.com/mytest4"/></Body></Envelope>}
+#        send "\r\n\r\n"
+        rxresp
+        expect resp.status == 200
+} -run
+
+# Test more than 2 chunks
+client c5 {
+        timeout 4
+        txreq -req POST -hdr "Content-length: 204"
+        send {<?xml version="1.}
+        send {0" encoding="utf-8"?><Envelop}
+        send {e xmlns="http://schemas.x}
+        send {mlsoap.org/soap/envelope/">}
+        send {<Header><userIdentity/></Header>}
+        send {<Body}
+        send {><Test xmlns="http://schemas.reuters.com/mytest5"/></Body></Envelope>}
+        rxresp
+        expect resp.status == 200
+} -run

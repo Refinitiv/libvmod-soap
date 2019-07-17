@@ -30,26 +30,29 @@
 #include "vmod_soap_gzip.h"
 
 static ssize_t
-fill_pipeline(struct soap_req_http *req_http, struct http_conn *htc, ssize_t len)
+fill_pipeline(struct soap_req_http *req_http, struct http_conn *htc, body_part *pipeline, int bytes_read, int bytes_total)
 {
 	char *buf;
 	ssize_t l;
 	ssize_t i = 0;
+	int len;
 
 	CHECK_OBJ_NOTNULL(htc, HTTP_CONN_MAGIC);
-	assert(len > 0);
+	assert(bytes_total > bytes_read);
+	len = bytes_total - bytes_read;
 	l = 0;
 	if (htc->pipeline_b) {
 		l = htc->pipeline_e - htc->pipeline_b;
 		assert(l > 0);
-		if (l > len) {
-			return (l);
+		if (l >= len + bytes_read) {
+			pipeline->data = htc->pipeline_b + bytes_read;
+			pipeline->length = len;
+			return len;
 		}
-		buf = (char*)apr_palloc(req_http->pool, len);
+		buf = (char*)apr_palloc(req_http->pool, len + l);
 		XXXAN(buf);
 
 		memcpy(buf, htc->pipeline_b, l);
-		len -= l;
 	}
 	else {
 		buf = (char*)apr_palloc(req_http->pool, len);
@@ -57,6 +60,8 @@ fill_pipeline(struct soap_req_http *req_http, struct http_conn *htc, ssize_t len
 	}
 	htc->pipeline_b = buf;
 	htc->pipeline_e = buf + l;
+	pipeline->data = htc->pipeline_e;
+	pipeline->length = 0;
 	if (len > 0) {
 		i = read(htc->fd, htc->pipeline_e, len);
 		if (i < 0) {
@@ -70,28 +75,28 @@ fill_pipeline(struct soap_req_http *req_http, struct http_conn *htc, ssize_t len
 			req_http->ctx->req->req_body_status = REQ_BODY_FAIL;
 			return (i);
 		}
+		pipeline->data = htc->pipeline_e;
+		pipeline->length = i;
 		htc->pipeline_e = htc->pipeline_e + i;
 	}
-	return (i + l);
+	return (i);
 }
 
 /* -------------------------------------------------------------------------------------/
    Read body part from varnish pipeline and uncompress the data if necessary
 */
-int read_body_part(struct soap_req_http *req_http, int bytes_left)
+int read_body_part(struct soap_req_http *req_http, int bytes_read, int bytes_total)
 {
 	body_part pipeline;
-	int bytes_read;
+	int res;
 
-	bytes_read = fill_pipeline(req_http, req_http->ctx->req->htc, bytes_left);
-	if (bytes_read <= 0)
+	res = fill_pipeline(req_http, req_http->ctx->req->htc, &pipeline, bytes_read, bytes_total);
+	if (res <= 0)
 	{
-		VSLb(req_http->ctx->vsl, SLT_Error, "v1_read error (%d bytes)", bytes_read);
-		return bytes_read;
+		VSLb(req_http->ctx->vsl, SLT_Error, "v1_read error (%d bytes)", res);
+		return res;
 	}
-	VSLb(req_http->ctx->vsl, SLT_Debug, "v1_read %d bytes", bytes_read);
-	pipeline.data = req_http->ctx->req->htc->pipeline_b;
-	pipeline.length = req_http->ctx->req->htc->pipeline_e - req_http->ctx->req->htc->pipeline_b;
+	VSLb(req_http->ctx->vsl, SLT_Debug, "v1_read %d bytes", res);
 	if (req_http->encoding == CE_NONE) {
 		req_http->body = pipeline;
 	}
@@ -99,7 +104,7 @@ int read_body_part(struct soap_req_http *req_http, int bytes_left)
 		VSLb(req_http->ctx->vsl, SLT_Error, "Can't uncompress gzip body");
 		return -1;
 	}
-	return bytes_read;
+	return res;
 }
 
 void init_req_http(struct soap_req_http *req_http)
