@@ -158,31 +158,29 @@ int process_request(struct priv_soap_task *task, enum soap_state state)
 			task->req_xml->ctx = task->ctx;
 			init_req_xml(task->req_xml);
 
-			task->bytes_left = http_GetContentLength(task->ctx->http_req);
-			if(task->bytes_left <= 0) {
-				VSLb(task->ctx->vsl, SLT_Error, "Invalid content-length %ld", task->bytes_left);
+			task->bytes_total = http_GetContentLength(task->ctx->http_req);
+			if(task->bytes_total <= 0) {
+				VSLb(task->ctx->vsl, SLT_Error, "Invalid content-length %ld", task->bytes_total);
 				return (-1);
 			}
 			task->state = INIT;
 			break;
 		case INIT:  // want header
 		case HEADER:  // want body
-			VSLb(task->ctx->vsl, SLT_Debug, "process_request 5: %d/%d (%ld bytes)", task->state, state, task->bytes_left);
-			if (task->bytes_left <= 0) {
+			VSLb(task->ctx->vsl, SLT_Debug, "process_request 5: %d/%d (%ld bytes)", task->state, state, task->bytes_total);
+			if (task->bytes_total <= 0) {
 				VSLb(task->ctx->vsl, SLT_Error, "Not enough data");
 				return (-1);
 			}
-			ssize_t bytes_total = task->bytes_left;
 			ssize_t bytes_read = 0;
-			while (bytes_read < bytes_total) {
-				int just_read = read_body_part(task->req_http, bytes_read, bytes_total);
+			while (bytes_read < task->bytes_total) {
+				int just_read = read_body_part(task->req_http, bytes_read, task->bytes_total);
 				if (just_read <= 0) {
 					VSLb(task->ctx->vsl, SLT_Error, "SOAP: http read failed (%d, errno: %d)", just_read, errno);
 					return (-1);
 				}
 				bytes_read += just_read;
-				VSLb(task->ctx->vsl, SLT_Debug, "process_request 6: read %zd bytes", bytes_read);
-				task->bytes_left -= bytes_read;
+				VSLb(task->ctx->vsl, SLT_Debug, "process_request 6: read %d bytes", just_read);
 
 				// parse chunk
 				VSLb(task->ctx->vsl, SLT_Debug, "process_request 7: tota %d bytes", task->req_http->body.length);

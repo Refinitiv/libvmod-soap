@@ -85,7 +85,7 @@ typedef struct priv_soap_task {
 	struct soap_req_http		*req_http;
 	struct soap_req_xml		*req_xml;
 	int				state;
-	ssize_t				bytes_left;
+	ssize_t				bytes_total;
 } sess_record;
 
 #include "vmod_soap_request.h"

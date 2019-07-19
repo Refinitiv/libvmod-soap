@@ -33,39 +33,39 @@ static ssize_t
 fill_pipeline(struct soap_req_http *req_http, struct http_conn *htc, body_part *pipeline, ssize_t bytes_read, ssize_t bytes_total)
 {
 	char *buf;
-	ssize_t l;
+	ssize_t previous_read;
 	ssize_t i = 0;
-	ssize_t len;
+	ssize_t bytes_left;
 
 	CHECK_OBJ_NOTNULL(htc, HTTP_CONN_MAGIC);
 	assert(bytes_total > bytes_read);
-	len = bytes_total - bytes_read;
-	l = 0;
+	bytes_left = bytes_total - bytes_read;
+	previous_read = 0;
 	if (htc->pipeline_b) {
-		l = htc->pipeline_e - htc->pipeline_b;
-		assert(l > 0);
+		previous_read = htc->pipeline_e - htc->pipeline_b;
+		assert(previous_read > 0);
 		// If varnish already fill pipeline with all necessary data
 		// fill pipeline variable with it, and skip call to read
-		if (l >= len + bytes_read) {
+		if (previous_read >= bytes_left + bytes_read) {
 			pipeline->data = htc->pipeline_b + bytes_read;
-			pipeline->length = len;
-			return len;
+			pipeline->length = bytes_left;
+			return bytes_left;
 		}
-		buf = (char*)apr_palloc(req_http->pool, len + l);
+		buf = (char*)apr_palloc(req_http->pool, bytes_left + previous_read);
 		XXXAN(buf);
 
-		memcpy(buf, htc->pipeline_b, l);
+		memcpy(buf, htc->pipeline_b, previous_read);
 	}
 	else {
-		buf = (char*)apr_palloc(req_http->pool, len);
+		buf = (char*)apr_palloc(req_http->pool, bytes_left);
 		XXXAN(buf);
 	}
 	htc->pipeline_b = buf;
-	htc->pipeline_e = buf + l;
+	htc->pipeline_e = buf + previous_read;
 	pipeline->data = htc->pipeline_e;
 	pipeline->length = 0;
 
-	i = read(htc->fd, htc->pipeline_e, len);
+	i = read(htc->fd, htc->pipeline_e, bytes_left);
 	if (i <= 0) {
 		if (htc->pipeline_b == htc->pipeline_e) {
 			htc->pipeline_b = NULL;
