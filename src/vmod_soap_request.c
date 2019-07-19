@@ -30,12 +30,12 @@
 #include "vmod_soap_gzip.h"
 
 static ssize_t
-fill_pipeline(struct soap_req_http *req_http, struct http_conn *htc, body_part *pipeline, int bytes_read, int bytes_total)
+fill_pipeline(struct soap_req_http *req_http, struct http_conn *htc, body_part *pipeline, ssize_t bytes_read, ssize_t bytes_total)
 {
 	char *buf;
 	ssize_t l;
 	ssize_t i = 0;
-	int len;
+	ssize_t len;
 
 	CHECK_OBJ_NOTNULL(htc, HTTP_CONN_MAGIC);
 	assert(bytes_total > bytes_read);
@@ -44,6 +44,8 @@ fill_pipeline(struct soap_req_http *req_http, struct http_conn *htc, body_part *
 	if (htc->pipeline_b) {
 		l = htc->pipeline_e - htc->pipeline_b;
 		assert(l > 0);
+		// If varnish already fill pipeline with all necessary data
+		// fill pipeline variable with it, and skip call to read
 		if (l >= len + bytes_read) {
 			pipeline->data = htc->pipeline_b + bytes_read;
 			pipeline->length = len;
@@ -62,30 +64,30 @@ fill_pipeline(struct soap_req_http *req_http, struct http_conn *htc, body_part *
 	htc->pipeline_e = buf + l;
 	pipeline->data = htc->pipeline_e;
 	pipeline->length = 0;
-	if (len > 0) {
-		i = read(htc->fd, htc->pipeline_e, len);
-		if (i < 0) {
-			if (htc->pipeline_b == htc->pipeline_e) {
-				htc->pipeline_b = NULL;
-				htc->pipeline_e = NULL;
-			}
-			// XXX: VTCP_Assert(i); // but also: EAGAIN
-			VSLb(req_http->ctx->vsl, SLT_FetchError,
-			    "%s", strerror(errno));
-			req_http->ctx->req->req_body_status = REQ_BODY_FAIL;
-			return (i);
+
+	i = read(htc->fd, htc->pipeline_e, len);
+	if (i <= 0) {
+		if (htc->pipeline_b == htc->pipeline_e) {
+			htc->pipeline_b = NULL;
+			htc->pipeline_e = NULL;
 		}
-		pipeline->data = htc->pipeline_e;
-		pipeline->length = i;
-		htc->pipeline_e = htc->pipeline_e + i;
+		// XXX: VTCP_Assert(i); // but also: EAGAIN
+		VSLb(req_http->ctx->vsl, SLT_FetchError,
+		    "%s", strerror(errno));
+		req_http->ctx->req->req_body_status = REQ_BODY_FAIL;
+		return (i);
 	}
+	pipeline->data = htc->pipeline_e;
+	pipeline->length = i;
+	htc->pipeline_e = htc->pipeline_e + i;
+
 	return (i);
 }
 
 /* -------------------------------------------------------------------------------------/
    Read body part from varnish pipeline and uncompress the data if necessary
 */
-int read_body_part(struct soap_req_http *req_http, int bytes_read, int bytes_total)
+int read_body_part(struct soap_req_http *req_http, ssize_t bytes_read, ssize_t bytes_total)
 {
 	body_part pipeline;
 	int res;

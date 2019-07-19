@@ -172,15 +172,16 @@ int process_request(struct priv_soap_task *task, enum soap_state state)
 				VSLb(task->ctx->vsl, SLT_Error, "Not enough data");
 				return (-1);
 			}
-			int bytes_total = task->bytes_left;
-			int bytes_read = 0;
+			ssize_t bytes_total = task->bytes_left;
+			ssize_t bytes_read = 0;
 			while (bytes_read < bytes_total) {
-				bytes_read += read_body_part(task->req_http, bytes_read, bytes_total);
-				if (bytes_read <= 0) {
-					VSLb(task->ctx->vsl, SLT_Error, "SOAP: http read failed (%d, errno: %d)", bytes_read, errno);
+				int just_read = read_body_part(task->req_http, bytes_read, bytes_total);
+				if (just_read <= 0) {
+					VSLb(task->ctx->vsl, SLT_Error, "SOAP: http read failed (%d, errno: %d)", just_read, errno);
 					return (-1);
 				}
-				VSLb(task->ctx->vsl, SLT_Debug, "process_request 6: read %d bytes", bytes_read);
+				bytes_read += just_read;
+				VSLb(task->ctx->vsl, SLT_Debug, "process_request 6: read %zd bytes", bytes_read);
 				task->bytes_left -= bytes_read;
 
 				// parse chunk
