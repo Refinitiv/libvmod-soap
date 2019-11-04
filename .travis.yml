@@ -17,7 +17,7 @@ env:
 before_install:
   - set -e
   - wget https://varnish-cache.org/_downloads/varnish-${VARNISH_VERSION}.tgz
-  - tar -zxf varnish-*.tar.gz
+  - tar -zxf varnish-*.tgz
   - pushd varnish-*/
   - ./configure --prefix=/usr
   - make -sj32
