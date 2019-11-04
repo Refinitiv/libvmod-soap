@@ -1,4 +1,4 @@
-libvmod-soap [![Build Status](https://travis-ci.org/thomsonreuters/libvmod-soap.svg?branch=master)](https://travis-ci.org/thomsonreuters/libvmod-soap)
+libvmod-soap [![Build Status](https://travis-ci.org/Refinitiv/libvmod-soap.svg?branch=master)](https://travis-ci.org/Refinitiv/libvmod-soap)
 =============
 
 
@@ -52,7 +52,7 @@ sub vcl_recv {
 }
 ```
 
-Looking for more ? See other examples on https://github.com/thomsonreuters/libvmod-soap/tree/master/src/tests. 
+Looking for more ? See other examples on https://github.com/Refinitiv/libvmod-soap/tree/master/src/tests. 
 
 VMOD Interface
 =============
@@ -103,4 +103,5 @@ Copyright
 =============
 This document is licensed under BSD-2-Clause license. See LICENSE for details.
 
-That code has been opened by (c) Thomson Reuters.
+The code was opened by (c) Refinitiv (previously Thomson Reuters).
+
