@@ -16,7 +16,7 @@ env:
 
 before_install:
   - set -e
-  - wget https://repo.varnish-cache.org/source/varnish-${VARNISH_VERSION}.tar.gz
+  - wget https://varnish-cache.org/_downloads/varnish-${VARNISH_VERSION}.tgz
   - tar -zxf varnish-*.tar.gz
   - pushd varnish-*/
   - ./configure --prefix=/usr
