@@ -34,5 +34,4 @@ script:
   - make check -j4 || (cat ./src/test-suite.log; false)
 
 compiler:
-  - clang
   - gcc
