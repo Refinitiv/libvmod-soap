@@ -20,6 +20,10 @@ server s1 {
         rxreq
         expect req.http.soap-ws-ns == "http://schemas.reuters.com/mytest5"
         txresp -status 200
+
+        rxreq
+        expect req.http.soap-ws-ns == "http://schemas.reuters.com/mytest6"
+        txresp -status 200
 } -start
 
 varnish v1 -vcl+backend {
@@ -89,6 +93,21 @@ client c5 {
         send {<Header><userIdentity/></Header>}
         send {<Body}
         send {><Test xmlns="http://schemas.reuters.com/mytest5"/></Body></Envelope>}
+        rxresp
+        expect resp.status == 200
+} -run
+
+# Test receiving full Body tag, with xmlns only in next chunk
+client c6 {
+        timeout 4
+        txreq -req POST -hdr "Content-length: 204"
+        send {<?xml version="1.}
+        send {0" encoding="utf-8"?><Envelop}
+        send {e xmlns="http://schemas.x}
+        send {mlsoap.org/soap/envelope/">}
+        send {<Header><userIdentity/></Header>}
+        send {<Body>}
+        send {<Test xmlns="http://schemas.reuters.com/mytest6"/></Body></Envelope>}
         rxresp
         expect resp.status == 200
 } -run

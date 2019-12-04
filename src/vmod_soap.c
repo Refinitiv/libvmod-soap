@@ -189,12 +189,8 @@ int process_request(struct priv_soap_task *task, enum soap_state state)
 					return (-1);
 				}
 
-				if (task->req_xml->body) {
+				if (task->req_xml->body && task->req_xml->action_namespace && task->req_xml->action_name) {
 					task->state = BODY;
-					break;
-				}
-				else if (task->req_xml->header && task->req_xml->action_namespace && task->req_xml->action_name) {
-					task->state = HEADER;
 					break;
 				}
 			}
