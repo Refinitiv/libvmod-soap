@@ -143,7 +143,7 @@ static void clean_task(void *priv)
 int process_request(struct priv_soap_task *task, enum soap_state state)
 {
 	VSLb(task->ctx->vsl, SLT_Debug, "process_request 0: %d/%d", task->state, state);
-	while (task->state < state && !task->req_xml->error) {
+	while (task->state < state) {
 		switch (task->state) {
 		case NONE:  // init
 			VSLb(task->ctx->vsl, SLT_Debug, "process_request 1: %d/%d", task->state, state);
