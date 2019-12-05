@@ -41,6 +41,7 @@ fill_pipeline(struct soap_req_http *req_http, struct http_conn *htc, body_part *
 	assert(bytes_total > bytes_read);
 	bytes_left = bytes_total - bytes_read;
 	previous_read = 0;
+        VSLb(req_http->ctx->vsl, SLT_Debug, "fill_pipeline, bytes_read=%ld, total=%ld, pipeline_b=%p, pipeline_e=%p, pipeline_len=%ld, pipeline_content=%.*s", bytes_read, bytes_total, htc->pipeline_b, htc->pipeline_e, htc->pipeline_e - htc->pipeline_b, (int)(htc->pipeline_e - htc->pipeline_b), htc->pipeline_b ? htc->pipeline_b : "");
 	if (htc->pipeline_b) {
 		previous_read = htc->pipeline_e - htc->pipeline_b;
 		assert(previous_read > 0);
