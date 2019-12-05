@@ -143,6 +143,7 @@ static void clean_task(void *priv)
 int process_request(struct priv_soap_task *task, enum soap_state state)
 {
 	VSLb(task->ctx->vsl, SLT_Debug, "process_request 0: %d/%d", task->state, state);
+	ssize_t bytes_read = 0;
 	while (task->state < state) {
 		switch (task->state) {
 		case NONE:  // init
@@ -174,7 +175,6 @@ int process_request(struct priv_soap_task *task, enum soap_state state)
 				VSLb(task->ctx->vsl, SLT_Error, "Not enough data");
 				return (-1);
 			}
-			ssize_t bytes_read = 0;
 			while (bytes_read < task->bytes_total) {
 				int just_read = read_body_part(task->req_http, bytes_read, task->bytes_total);
 				if (just_read <= 0) {

@@ -33,37 +33,35 @@ static ssize_t
 fill_pipeline(struct soap_req_http *req_http, struct http_conn *htc, body_part *pipeline, ssize_t bytes_read, ssize_t bytes_total)
 {
 	char *buf;
-	ssize_t previous_read;
+	ssize_t original_pipeline_len;
 	ssize_t i = 0;
 	ssize_t bytes_left;
 
 	CHECK_OBJ_NOTNULL(htc, HTTP_CONN_MAGIC);
 	assert(bytes_total > bytes_read);
 	bytes_left = bytes_total - bytes_read;
-	previous_read = 0;
+	original_pipeline_len = 0;
 	if (htc->pipeline_b) {
-		previous_read = htc->pipeline_e - htc->pipeline_b;
-		assert(previous_read > 0);
+		original_pipeline_len = htc->pipeline_e - htc->pipeline_b;
+		assert(original_pipeline_len > 0);
 		// If varnish already fill pipeline with all necessary data
 		// fill pipeline variable with it, and skip call to read
-		if (previous_read >= bytes_left + bytes_read) {
+		if (original_pipeline_len >= bytes_left + bytes_read) {
 			pipeline->data = htc->pipeline_b + bytes_read;
 			pipeline->length = bytes_left;
 			return bytes_left;
 		}
-		buf = (char*)apr_palloc(req_http->pool, bytes_left + previous_read);
+		buf = (char*)apr_palloc(req_http->pool, bytes_left + original_pipeline_len);
 		XXXAN(buf);
 
-		memcpy(buf, htc->pipeline_b, previous_read);
+		memcpy(buf, htc->pipeline_b, original_pipeline_len);
 	}
 	else {
 		buf = (char*)apr_palloc(req_http->pool, bytes_left);
 		XXXAN(buf);
 	}
 	htc->pipeline_b = buf;
-	htc->pipeline_e = buf + previous_read;
-	pipeline->data = htc->pipeline_e;
-	pipeline->length = 0;
+	htc->pipeline_e = buf + original_pipeline_len;
 
 	i = read(htc->fd, htc->pipeline_e, bytes_left);
 	if (i <= 0) {
@@ -77,11 +75,11 @@ fill_pipeline(struct soap_req_http *req_http, struct http_conn *htc, body_part *
 		req_http->ctx->req->req_body_status = REQ_BODY_FAIL;
 		return (i);
 	}
-	pipeline->data = htc->pipeline_e;
-	pipeline->length = i;
+	pipeline->data = htc->pipeline_b + bytes_read;
+	pipeline->length = original_pipeline_len - bytes_read + i;
 	htc->pipeline_e = htc->pipeline_e + i;
 
-	return (i);
+	return (pipeline->length);
 }
 
 /* -------------------------------------------------------------------------------------/
