@@ -185,7 +185,7 @@ int process_request(struct priv_soap_task *task, enum soap_state state)
 				VSLb(task->ctx->vsl, SLT_Debug, "process_request 6: read %d bytes", just_read);
 
 				// parse chunk
-				VSLb(task->ctx->vsl, SLT_Debug, "process_request 7: tota %d bytes", task->req_http->body.length);
+				VSLb(task->ctx->vsl, SLT_Debug, "process_request 7: tota %d bytes, content: %s", task->req_http->body.length, task->req_http->body.data);
 				if (parse_soap_chunk(task->req_xml, task->req_http->body.data, task->req_http->body.length)) {
 					VSLb(task->ctx->vsl, SLT_Error, "SOAP: soap read failed %d", errno);
 					return (-1);
