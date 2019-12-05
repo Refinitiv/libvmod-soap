@@ -36,8 +36,9 @@ static apr_pool_t	*apr_pool = NULL;
 enum soap_state {
 	NONE = 0,
 	INIT,
-	HEADER,
-	BODY,
+	HEADER_DONE,      // Header element completely read
+	ACTION_AVAILABLE, // Body parsing is started and action name and namespace available
+	BODY_DONE,        // Body element completely read
 	DONE
 };
 
@@ -142,6 +143,7 @@ static void clean_task(void *priv)
 int process_request(struct priv_soap_task *task, enum soap_state state)
 {
 	VSLb(task->ctx->vsl, SLT_Debug, "process_request 0: %d/%d", task->state, state);
+	ssize_t bytes_read = 0;
 	while (task->state < state) {
 		switch (task->state) {
 		case NONE:  // init
@@ -165,14 +167,14 @@ int process_request(struct priv_soap_task *task, enum soap_state state)
 			}
 			task->state = INIT;
 			break;
-		case INIT:  // want header
-		case HEADER:  // want body
+		case INIT:
+		case HEADER_DONE:
+		case ACTION_AVAILABLE:
 			VSLb(task->ctx->vsl, SLT_Debug, "process_request 5: %d/%d (%ld bytes)", task->state, state, task->bytes_total);
 			if (task->bytes_total <= 0) {
 				VSLb(task->ctx->vsl, SLT_Error, "Not enough data");
 				return (-1);
 			}
-			ssize_t bytes_read = 0;
 			while (bytes_read < task->bytes_total) {
 				int just_read = read_body_part(task->req_http, bytes_read, task->bytes_total);
 				if (just_read <= 0) {
@@ -190,16 +192,20 @@ int process_request(struct priv_soap_task *task, enum soap_state state)
 				}
 
 				if (task->req_xml->body) {
-					task->state = BODY;
+					task->state = BODY_DONE;
 					break;
 				}
-				else if (task->req_xml->header && task->req_xml->action_namespace && task->req_xml->action_name) {
-					task->state = HEADER;
+				if (task->req_xml->action_namespace && task->req_xml->action_name) {
+					task->state = ACTION_AVAILABLE;
+					break;
+				}
+				if (task->req_xml->header) {
+					task->state = HEADER_DONE;
 					break;
 				}
 			}
 			break;
-		case BODY:  // read from memory
+		case BODY_DONE:  // read from memory
 		case DONE:
 			VSLb(task->ctx->vsl, SLT_Debug, "process_request 8: %d/%d", task->state, state);
 			break;
@@ -283,14 +289,14 @@ VCL_BOOL __match_proto__(td_soap_is_valid)
 {
 	struct priv_soap_task *soap_task = priv_soap_get(ctx, priv);
 
-	return (process_request(soap_task, HEADER) == 0);
+	return (process_request(soap_task, ACTION_AVAILABLE) == 0);
 }
 
 VCL_STRING __match_proto__(td_soap_action)
 	vmod_action(VRT_CTX, struct vmod_priv *priv /* PRIV_TASK */)
 {
 	struct priv_soap_task *soap_task = priv_soap_get(ctx, priv);
-	if(process_request(soap_task, HEADER) == 0) {
+	if(process_request(soap_task, ACTION_AVAILABLE) == 0) {
 		return (soap_task->req_xml->action_name);
 	}
 	return ("");
@@ -300,7 +306,7 @@ VCL_STRING __match_proto__(td_soap_action_namespace)
 	vmod_action_namespace(VRT_CTX, struct vmod_priv *priv /* PRIV_TASK */)
 {
 	struct priv_soap_task *soap_task = priv_soap_get(ctx, priv);
-	if(process_request(soap_task, HEADER) == 0) {
+	if(process_request(soap_task, ACTION_AVAILABLE) == 0) {
 		return (soap_task->req_xml->action_namespace);
 	}
 	return ("");
@@ -334,7 +340,7 @@ VCL_STRING __match_proto__(td_soap_xpath_header)
 	AN(priv_task);
 	soap_task = priv_soap_get(ctx, priv_task);
 
-	if(process_request(soap_task, HEADER) == 0) {
+	if(process_request(soap_task, HEADER_DONE) == 0) {
 		return (evaluate_xpath(soap_vcl, soap_task, soap_task->req_xml->header, xpath));
 	}
 	return ("");
@@ -352,7 +358,7 @@ VCL_STRING __match_proto__(td_soap_xpath_body)
 	AN(priv_task);
 	soap_task = priv_soap_get(ctx, priv_task);
 
-	if(process_request(soap_task, BODY) == 0) {
+	if(process_request(soap_task, BODY_DONE) == 0) {
 		return (evaluate_xpath(soap_vcl, soap_task, soap_task->req_xml->body, xpath));
 	}
 	return ("");

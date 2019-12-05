@@ -170,11 +170,7 @@ static void start_element_ns(void *ptr,
 		}
 		break;
 	case 1:
-		if (xmlStrEqual(localname, XMLSTR("Header")) && xmlStrEqual(URI, soap_versions[sax_ctx->soap_version]))
-			sax_ctx->header = xml_parser->node;
-		else if (xmlStrEqual(localname, XMLSTR("Body")) && xmlStrEqual(URI, soap_versions[sax_ctx->soap_version]))
-			sax_ctx->body = xml_parser->node;
-		else {
+		if ((!xmlStrEqual(localname, XMLSTR("Header")) && !xmlStrEqual(localname, XMLSTR("Body"))) || !xmlStrEqual(URI, soap_versions[sax_ctx->soap_version])) {
 			sax_ctx->error = WS_Printf(sax_ctx->ctx->ws, "Invalid XML tag <%s> found (namespace: %s).", localname, URI);
 			xmlStopParser(xml_parser);
 			return;
