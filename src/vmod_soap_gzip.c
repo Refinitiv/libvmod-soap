@@ -85,7 +85,8 @@ int uncompress_body_part(struct soap_req_http *req_http, body_part *compressed_b
 		stream->next_out =(Bytef*) buf;
 		stream->avail_out = cache_param->gzip_buffer;
 		int err = inflate(stream, Z_SYNC_FLUSH);
-		if (err != Z_OK && err != Z_STREAM_END)
+		if ((err != Z_OK && err != Z_STREAM_END) ||
+                    (err == Z_STREAM_END && stream->avail_in != 0))
 		{
 			sts = 1;
 			break;

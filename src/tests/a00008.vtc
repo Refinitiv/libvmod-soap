@@ -3,10 +3,6 @@ varnishtest "Unknown/Unsupported Content-Encoding"
 server s1 {
         rxreq
         txresp -status 200
-
-        rxreq
-        txresp -status 200
-
 } -start
 
 varnish v1 -vcl+backend {
@@ -31,6 +27,7 @@ client c1 {
         rxresp
         expect resp.status == 200
 
+        # Uncomplete XML should not lead to timeout
         txreq -req POST -body {<}
         rxresp
         expect resp.status == 400
