@@ -176,7 +176,7 @@ int process_request(struct priv_soap_task *task, enum soap_state state)
 				return (-1);
 			}
 			// If everything is read, but state not switched to BODY_DONE that mean
-                        // XML body isn't present in request
+			// XML body isn't present in request
 			if (bytes_read >= task->bytes_total) {
 				VSLb(task->ctx->vsl, SLT_Error, "SOAP: http read error: incomplete xml");
 				return (-1);
