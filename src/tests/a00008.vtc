@@ -1,0 +1,37 @@
+varnishtest "Unknown/Unsupported Content-Encoding"
+
+server s1 {
+        rxreq
+        txresp -status 200
+
+        rxreq
+        txresp -status 200
+
+} -start
+
+varnish v1 -vcl+backend {
+    import ${vmod_soap};
+
+    sub vcl_recv
+    {
+            if(soap.is_valid()) {
+                    return (synth(200, "Ok"));
+            } else {
+                    return (synth(400, "Wrong SOAP message"));
+            }
+    }
+    
+} -start
+
+client c1 {
+        timeout 1
+        txreq -req POST -body {<?xml version="1.0" encoding="utf-8"?>
+        <Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/"><Body>
+<Test xmlns="http://schemas.reuters.com/mytest"/></Body></Envelope>}
+        rxresp
+        expect resp.status == 200
+
+        txreq -req POST -body {<}
+        rxresp
+        expect resp.status == 400
+} -run
