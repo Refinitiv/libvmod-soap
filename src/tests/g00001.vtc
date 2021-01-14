@@ -1,4 +1,4 @@
-varnishtest "Incomplete payload parsing"
+varnishtest "Multiple gzip streams handling"
 
 server s1 {
         rxreq
@@ -21,8 +21,9 @@ varnish v1 -vcl+backend {
 
 client c1 {
         timeout 1
-        # Uncomplete XML should not lead to timeout
-        txreq -req POST -body {<}
+        # Gzipped stream with some characters after stream end should not lead to timeout
+        txreq -req POST -hdr "Content-Type:application/zip" -hdr "Content-Encoding: gzip" -hdr "Content-Length: 21"
+        sendhex "1f 8b 08 00 00 00 00 00 00 03 03 00 00 00 00 00 00 00 00 00 0a"
         rxresp
         expect resp.status == 400
 } -run
