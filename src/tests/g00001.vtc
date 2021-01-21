@@ -1,0 +1,29 @@
+varnishtest "Multiple gzip streams handling"
+
+server s1 {
+        rxreq
+        txresp -status 200
+} -start
+
+varnish v1 -vcl+backend {
+    import ${vmod_soap};
+
+    sub vcl_recv
+    {
+            if(soap.is_valid()) {
+                    return (synth(200, "Ok"));
+            } else {
+                    return (synth(400, "Wrong SOAP message"));
+            }
+    }
+    
+} -start
+
+client c1 {
+        timeout 1
+        # Gzipped stream with some characters after stream end should not lead to timeout
+        txreq -req POST -hdr "Content-Type:application/zip" -hdr "Content-Encoding: gzip" -hdr "Content-Length: 21"
+        sendhex "1f 8b 08 00 00 00 00 00 00 03 03 00 00 00 00 00 00 00 00 00 0a"
+        rxresp
+        expect resp.status == 400
+} -run

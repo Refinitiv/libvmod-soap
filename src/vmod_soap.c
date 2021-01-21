@@ -175,6 +175,12 @@ int process_request(struct priv_soap_task *task, enum soap_state state)
 				VSLb(task->ctx->vsl, SLT_Error, "Not enough data");
 				return (-1);
 			}
+			// If everything is read, but state not switched to BODY_DONE that mean
+			// XML body isn't present in request
+			if (bytes_read >= task->bytes_total) {
+				VSLb(task->ctx->vsl, SLT_Error, "SOAP: http read error: incomplete xml");
+				return (-1);
+			}
 			while (bytes_read < task->bytes_total) {
 				int just_read = read_body_part(task->req_http, bytes_read, task->bytes_total);
 				if (just_read <= 0) {
