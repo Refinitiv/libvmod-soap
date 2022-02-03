@@ -81,6 +81,7 @@ const char* evaluate_xpath(struct priv_soap_vcl *soap_vcl, struct priv_soap_task
 	xmlXPathContextPtr	    xpathCtx;
 	xmlXPathObjectPtr	    xpathObj;
 	struct soap_namespace	    *ns;
+	const char		    *s;
 	int			    i;
 
 	AN(node);
@@ -108,7 +109,9 @@ const char* evaluate_xpath(struct priv_soap_vcl *soap_vcl, struct priv_soap_task
 	for (i = 0; i < (xpathObj->nodesetval ? xpathObj->nodesetval->nodeNr : 0); i++) {
 		if( xpathObj->nodesetval->nodeTab[i]->children &&
 		    xpathObj->nodesetval->nodeTab[i]->children->content ) {
-			return ((const char*)(xpathObj->nodesetval->nodeTab[i]->children->content));
+			s = (const char *)xpathObj->nodesetval->nodeTab[i]->children->content;
+			xmlXPathFreeContext(xpathCtx);
+			return (s);
 		}
 	}
 
