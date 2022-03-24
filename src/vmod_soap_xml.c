@@ -108,10 +108,24 @@ const char* evaluate_xpath(struct priv_soap_vcl *soap_vcl, struct priv_soap_task
 	for (i = 0; i < (xpathObj->nodesetval ? xpathObj->nodesetval->nodeNr : 0); i++) {
 		if( xpathObj->nodesetval->nodeTab[i]->children &&
 		    xpathObj->nodesetval->nodeTab[i]->children->content ) {
-			return ((const char*)(xpathObj->nodesetval->nodeTab[i]->children->content));
+			unsigned available = WS_Reserve(soap_task->ctx->ws, 0);
+			// All string symbols + terminating zero
+			unsigned amount = xmlStrlen(xpathObj->nodesetval->nodeTab[i]->children->content) + 1;
+			char *res = "";
+			if (available < amount) {
+				WS_Release(soap_task->ctx->ws, 0);
+			} else {
+				res = soap_task->ctx->ws->f;
+				memcpy(res, xpathObj->nodesetval->nodeTab[i]->children->content, amount);
+				WS_Release(soap_task->ctx->ws, amount);
+			}
+			xmlXPathFreeContext(xpathCtx);
+			xmlXPathFreeObject(xpathObj);
+			return (res);
 		}
 	}
 
+	xmlXPathFreeContext(xpathCtx);
 	xmlXPathFreeObject(xpathObj);
 	VSLb(soap_task->ctx->vsl, SLT_Debug, "SOAP: xpath %s find nothing in %s", xpath, node->name);
 	return "";
