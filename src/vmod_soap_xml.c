@@ -108,19 +108,15 @@ const char* evaluate_xpath(struct priv_soap_vcl *soap_vcl, struct priv_soap_task
 	for (i = 0; i < (xpathObj->nodesetval ? xpathObj->nodesetval->nodeNr : 0); i++) {
 		if( xpathObj->nodesetval->nodeTab[i]->children &&
 		    xpathObj->nodesetval->nodeTab[i]->children->content ) {
-			unsigned available = WS_Reserve(soap_task->ctx->ws, 0);
-			// All string symbols + terminating zero
-			unsigned amount = xmlStrlen(xpathObj->nodesetval->nodeTab[i]->children->content) + 1;
-			char *res = "";
-			if (available < amount) {
-				WS_Release(soap_task->ctx->ws, 0);
-			} else {
-				res = soap_task->ctx->ws->f;
-				memcpy(res, xpathObj->nodesetval->nodeTab[i]->children->content, amount);
-				WS_Release(soap_task->ctx->ws, amount);
-			}
+			// Save free pointer to reset workspace in case of overflow
+			void *f = soap_task->ctx->ws->f;
+			char *res = WS_Copy(soap_task->ctx->ws, xpathObj->nodesetval->nodeTab[i]->children->content, xmlStrlen(xpathObj->nodesetval->nodeTab[i]->children->content) + 1);
 			xmlXPathFreeContext(xpathCtx);
 			xmlXPathFreeObject(xpathObj);
+			if (!res) {
+				WS_Reset(soap_task->ctx->ws, f);
+				return "";
+			}
 			return (res);
 		}
 	}
