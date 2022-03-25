@@ -110,7 +110,7 @@ const char* evaluate_xpath(struct priv_soap_vcl *soap_vcl, struct priv_soap_task
 		    xpathObj->nodesetval->nodeTab[i]->children->content ) {
 			// Save free pointer to reset workspace in case of overflow
 			void *f = soap_task->ctx->ws->f;
-			char *res = WS_Copy(soap_task->ctx->ws, xpathObj->nodesetval->nodeTab[i]->children->content, xmlStrlen(xpathObj->nodesetval->nodeTab[i]->children->content) + 1);
+			char *res = WS_Copy(soap_task->ctx->ws, xpathObj->nodesetval->nodeTab[i]->children->content, -1);
 			xmlXPathFreeContext(xpathCtx);
 			xmlXPathFreeObject(xpathObj);
 			if (!res) {
