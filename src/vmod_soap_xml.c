@@ -108,10 +108,20 @@ const char* evaluate_xpath(struct priv_soap_vcl *soap_vcl, struct priv_soap_task
 	for (i = 0; i < (xpathObj->nodesetval ? xpathObj->nodesetval->nodeNr : 0); i++) {
 		if( xpathObj->nodesetval->nodeTab[i]->children &&
 		    xpathObj->nodesetval->nodeTab[i]->children->content ) {
-			return ((const char*)(xpathObj->nodesetval->nodeTab[i]->children->content));
+			// Save free pointer to reset workspace in case of overflow
+			void *f = soap_task->ctx->ws->f;
+			char *res = WS_Copy(soap_task->ctx->ws, xpathObj->nodesetval->nodeTab[i]->children->content, -1);
+			xmlXPathFreeContext(xpathCtx);
+			xmlXPathFreeObject(xpathObj);
+			if (!res) {
+				WS_Reset(soap_task->ctx->ws, f);
+				return "";
+			}
+			return (res);
 		}
 	}
 
+	xmlXPathFreeContext(xpathCtx);
 	xmlXPathFreeObject(xpathObj);
 	VSLb(soap_task->ctx->vsl, SLT_Debug, "SOAP: xpath %s find nothing in %s", xpath, node->name);
 	return "";
