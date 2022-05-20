@@ -324,11 +324,9 @@ void synth_soap_fault(struct soap_req_xml *req_xml, int code, const char* messag
 	doc = xmlNewDoc(XMLSTR("1.0"));
 	create_soap_fault(doc, req_xml->error_info);
 	xmlDocDumpMemory(doc, &content, &length);
-	VRT_synth_page(req_xml->ctx, (const char*)content, vrt_magic_string_end);
+	VRT_synth_page(req_xml->ctx, TOSTRAND((const char*)content));
 	VRT_SetHdr(req_xml->ctx, &VGC_HDR_RESP_Content_2d_Type,
-	    "application/soap+xml; charset=utf-8",
-	    vrt_magic_string_end
-	);
+	    "application/soap+xml; charset=utf-8", NULL);
 	xmlFree(content);
 	xmlFreeDoc(doc);
 }
