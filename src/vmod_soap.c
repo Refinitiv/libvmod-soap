@@ -33,7 +33,6 @@
 
 #define POOL_KEY "VRN_IH_PK"
 
-static pthread_mutex_t	soap_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int		refcount = 0;
 static apr_pool_t	*apr_pool = NULL;
 
@@ -250,12 +249,10 @@ int v_matchproto_(vmod_event_f)
 
 	switch (e) {
 	case VCL_EVENT_LOAD:
-		AZ(pthread_mutex_lock(&soap_mutex));
 		if(0 == refcount++) {
 			init_xml();
 			init_apr();
 		}
-		AZ(pthread_mutex_unlock(&soap_mutex));
 
 		priv_soap_vcl = init_vcl();
 		priv->priv = priv_soap_vcl;
@@ -266,12 +263,10 @@ int v_matchproto_(vmod_event_f)
 	case VCL_EVENT_COLD:
 		break;
 	case VCL_EVENT_DISCARD:
-		AZ(pthread_mutex_lock(&soap_mutex));
 		if(0 == --refcount) {
 			clean_xml();
 			clean_apr();
 		}
-		AZ(pthread_mutex_unlock(&soap_mutex));
 		break;
 	default:
 		return (0);
