@@ -229,7 +229,7 @@ int process_request(struct priv_soap_task *task, enum soap_state state)
  * (un)registration here.
  *
  */
-int __match_proto__(vmod_event_f)
+int v_matchproto_(vmod_event_f)
 	VPFX(event_function)(VRT_CTX, struct vmod_priv *priv /* PRIV_VCL */,
 	    enum vcl_event_e e)
 {
@@ -291,7 +291,7 @@ sess_record* priv_soap_get(VRT_CTX, struct vmod_priv *priv /* PRIV_TASK */)
 	return (soap_task);
 }
 
-VCL_BOOL __match_proto__(td_soap_is_valid)
+VCL_BOOL v_matchproto_(td_soap_is_valid)
 	vmod_is_valid(VRT_CTX, struct vmod_priv *priv /* PRIV_TASK */)
 {
 	struct priv_soap_task *soap_task = priv_soap_get(ctx, priv);
@@ -299,7 +299,7 @@ VCL_BOOL __match_proto__(td_soap_is_valid)
 	return (process_request(soap_task, ACTION_AVAILABLE) == 0);
 }
 
-VCL_STRING __match_proto__(td_soap_action)
+VCL_STRING v_matchproto_(td_soap_action)
 	vmod_action(VRT_CTX, struct vmod_priv *priv /* PRIV_TASK */)
 {
 	struct priv_soap_task *soap_task = priv_soap_get(ctx, priv);
@@ -309,7 +309,7 @@ VCL_STRING __match_proto__(td_soap_action)
 	return ("");
 }
 
-VCL_STRING __match_proto__(td_soap_action_namespace)
+VCL_STRING v_matchproto_(td_soap_action_namespace)
 	vmod_action_namespace(VRT_CTX, struct vmod_priv *priv /* PRIV_TASK */)
 {
 	struct priv_soap_task *soap_task = priv_soap_get(ctx, priv);
@@ -319,7 +319,7 @@ VCL_STRING __match_proto__(td_soap_action_namespace)
 	return ("");
 }
 
-VCL_VOID __match_proto__(td_soap_add_namespace)
+VCL_VOID v_matchproto_(td_soap_add_namespace)
 	vmod_add_namespace(VRT_CTX, struct vmod_priv *priv /* PRIV_VCL */, VCL_STRING prefix, VCL_STRING uri)
 {
 	struct priv_soap_vcl	    *priv_soap_vcl;
@@ -335,7 +335,7 @@ VCL_VOID __match_proto__(td_soap_add_namespace)
 	VSLIST_INSERT_HEAD(&priv_soap_vcl->namespaces, namespace, list);
 }
 
-VCL_STRING __match_proto__(td_soap_xpath_header)
+VCL_STRING v_matchproto_(td_soap_xpath_header)
 	vmod_xpath_header(VRT_CTX, struct vmod_priv *priv_vcl /* PRIV_VCL */, struct vmod_priv *priv_task /* PRIV_TASK */, VCL_STRING xpath)
 {
 	struct priv_soap_vcl *soap_vcl;;
@@ -353,7 +353,7 @@ VCL_STRING __match_proto__(td_soap_xpath_header)
 	return ("");
 }
 
-VCL_STRING __match_proto__(td_soap_xpath_body)
+VCL_STRING v_matchproto_(td_soap_xpath_body)
 	vmod_xpath_body(VRT_CTX, struct vmod_priv *priv_vcl /* PRIV_VCL */, struct vmod_priv *priv_task /* PRIV_TASK */, VCL_STRING xpath)
 {
 	struct priv_soap_vcl *soap_vcl;;
@@ -371,7 +371,7 @@ VCL_STRING __match_proto__(td_soap_xpath_body)
 	return ("");
 }
 
-VCL_VOID __match_proto__(td_soap_synthetic)
+VCL_VOID v_matchproto_(td_soap_synthetic)
 	vmod_synthetic(VRT_CTX, struct vmod_priv *priv_task /* PRIV_TASK */, VCL_INT soap_code, VCL_STRING soap_message)
 {
 	struct priv_soap_task *soap_task;
