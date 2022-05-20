@@ -230,7 +230,8 @@ int process_request(struct priv_soap_task *task, enum soap_state state)
  *
  */
 int __match_proto__(vmod_event_f)
-	event_function(VRT_CTX, struct vmod_priv *priv /* PRIV_VCL */, enum vcl_event_e e)
+	VPFX(event_function)(VRT_CTX, struct vmod_priv *priv /* PRIV_VCL */,
+	    enum vcl_event_e e)
 {
 	struct priv_soap_vcl *priv_soap_vcl;
 

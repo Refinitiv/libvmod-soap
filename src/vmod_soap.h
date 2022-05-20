@@ -29,8 +29,6 @@
 #define __VMOD_SOAP__H__
 
 /* need vcl.h before vrt.h for vmod_evet_f typedef */
-#include "vcl.h"
-#include "vrt.h"
 #include "cache/cache.h"
 #include "cache/cache_director.h"
 #include "cache/cache_backend.h"
