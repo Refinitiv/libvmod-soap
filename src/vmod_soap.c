@@ -25,7 +25,11 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "config.h"
+
+#include "cache/cache.h"
 #include "vmod_soap.h"
+#include "vcc_soap_if.h"
 
 #define POOL_KEY "VRN_IH_PK"
 

@@ -25,7 +25,12 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "config.h"
+
+#include "cache/cache.h"
 #include "vmod_soap.h"
+#include "vcc_soap_if.h"
+
 #include "vmod_soap_xml.h"
 #include "vmod_soap_http.h"
 #include "vmod_soap_request.h"

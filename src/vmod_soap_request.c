@@ -25,7 +25,13 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "config.h"
+
+// XXX for struct http_conn, should be replaced with buffered body
+#include "cache/cache_varnishd.h"
 #include "vmod_soap.h"
+#include "vcc_soap_if.h"
+
 #include "vmod_soap_xml.h"
 #include "vmod_soap_gzip.h"
 
@@ -63,7 +69,7 @@ fill_pipeline(struct soap_req_http *req_http, struct http_conn *htc, body_part *
 	htc->pipeline_b = buf;
 	htc->pipeline_e = buf + original_pipeline_len;
 
-	i = read(htc->fd, htc->pipeline_e, bytes_left);
+	i = read(*htc->rfd, htc->pipeline_e, bytes_left);
 	if (i <= 0) {
 		if (htc->pipeline_b == htc->pipeline_e) {
 			htc->pipeline_b = NULL;
@@ -72,7 +78,7 @@ fill_pipeline(struct soap_req_http *req_http, struct http_conn *htc, body_part *
 		// XXX: VTCP_Assert(i); // but also: EAGAIN
 		VSLb(req_http->ctx->vsl, SLT_FetchError,
 		    "%s", strerror(errno));
-		req_http->ctx->req->req_body_status = REQ_BODY_FAIL;
+		req_http->ctx->req->req_body_status = BS_ERROR;
 		return (i);
 	}
 	pipeline->data = htc->pipeline_b + bytes_read;
