@@ -69,7 +69,7 @@ void clean_gzip(struct soap_req_http *req_http)
 */
 int uncompress_body_part(struct soap_req_http *req_http, body_part *compressed_body_part, body_part *uncompressed_body_part)
 {
-	char		*init;
+	intptr_t	init;
 	z_stream	*stream;
 	char		*buf;
 	Bytef		*res_buf = 0;
