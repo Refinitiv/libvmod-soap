@@ -29,6 +29,10 @@
 #include "vmod_soap_http.h"
 #include "vmod_soap_gzip.h"
 
+// XXX this should be replaced by a vmod parameter
+#include "common/common_param.h"
+extern volatile struct params * cache_param;
+
 /* ------------------------------------------------------/
    Init HTTP context with encoding type
 */
