@@ -61,11 +61,12 @@ static void clean_apr()
 /* -------------------------------------------------------------------------------------/
    init vcl
 */
-static void clean_vcl(void *priv)
+static void clean_vcl(VRT_CTX, void *priv)
 {
 	struct priv_soap_vcl *priv_soap_vcl;
 	struct soap_namespace *ns, *ns2;
 
+	CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
 	CAST_OBJ_NOTNULL(priv_soap_vcl, priv, PRIV_SOAP_VCL_MAGIC);
 
 	VSLIST_FOREACH_SAFE(ns, &priv_soap_vcl->namespaces, list, ns2) {
@@ -114,11 +115,11 @@ static struct priv_soap_task* init_task(VRT_CTX)
 /* -----------------------------------------------------------------/
    destroy session
 */
-static void clean_task(void *priv)
+static void clean_task(VRT_CTX, void *priv)
 {
 	struct priv_soap_task *soap_task;
 
-	AN(priv);
+	CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
 	CAST_OBJ_NOTNULL(soap_task, priv, PRIV_SOAP_TASK_MAGIC);
 
 	clean_req_xml(soap_task->req_xml);
@@ -224,6 +225,12 @@ int process_request(struct priv_soap_task *task, enum soap_state state)
 	return (0);
 }
 
+static const struct vmod_priv_methods priv_soap_vcl_methods[1] = {{
+	.magic = VMOD_PRIV_METHODS_MAGIC,
+	.type = "soap priv_vcl",
+	.fini = clean_vcl
+}};
+
 /*
  * handle vmod internal state, vmod init/fini and/or varnish callback
  * (un)registration here.
@@ -248,7 +255,7 @@ int v_matchproto_(vmod_event_f)
 
 		priv_soap_vcl = init_vcl();
 		priv->priv = priv_soap_vcl;
-		priv->free = clean_vcl;
+		priv->methods = priv_soap_vcl_methods;
 		break;
 	case VCL_EVENT_WARM:
 		break;
@@ -268,6 +275,12 @@ int v_matchproto_(vmod_event_f)
 	return (0);
 }
 
+static const struct vmod_priv_methods priv_soap_task_methods[1] = {{
+	.magic = VMOD_PRIV_METHODS_MAGIC,
+	.type = "soap priv_task",
+	.fini = clean_task
+}};
+
 sess_record* priv_soap_get(VRT_CTX, struct vmod_priv *priv /* PRIV_TASK */)
 {
 	struct priv_soap_task *soap_task;
@@ -276,7 +289,7 @@ sess_record* priv_soap_get(VRT_CTX, struct vmod_priv *priv /* PRIV_TASK */)
 	AN(priv);
 	if(priv->priv == NULL) {
 		priv->priv = init_task(ctx);
-		priv->free = clean_task;
+		priv->methods = priv_soap_task_methods;
 	}
 	CAST_OBJ_NOTNULL(soap_task, priv->priv, PRIV_SOAP_TASK_MAGIC);
 	if(soap_task->ctx != ctx) {
