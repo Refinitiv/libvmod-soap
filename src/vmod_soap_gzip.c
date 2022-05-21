@@ -34,21 +34,24 @@
 #include "vmod_soap_http.h"
 #include "vmod_soap_gzip.h"
 
-// XXX this should be replaced by a vmod parameter
-#include "common/common_param.h"
-extern volatile struct params * cache_param;
-
 /* ------------------------------------------------------/
    Init HTTP context with encoding type
 */
 void init_gzip(struct soap_req_http *req_http)
 {
+	VRT_CTX;
 	int init_flags = MAX_WBITS;
+
+	ctx = req_http->ctx;
+	CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
+
 	switch (req_http->encoding) {
 	case CE_GZIP:
 		init_flags += 16;
 	case CE_DEFLATE:
-		req_http->compression_stream = (z_stream*)apr_pcalloc(req_http->pool, sizeof(z_stream));
+		req_http->compression_stream =
+		    (z_stream*)WS_Alloc(ctx->ws, sizeof(z_stream));
+		XXXAN(req_http->compression_stream);
 		XXXAZ(inflateInit2(req_http->compression_stream, init_flags));
 		break;
 	default:
@@ -74,25 +77,35 @@ void clean_gzip(struct soap_req_http *req_http)
 */
 int uncompress_body_part(struct soap_req_http *req_http, body_part *compressed_body_part, body_part *uncompressed_body_part)
 {
-	intptr_t	init;
+	VRT_CTX;
 	z_stream	*stream;
 	char		*buf;
-	Bytef		*res_buf = 0;
-	int		res_len = 0;
+	unsigned	len;
 	int		sts = 0;
 
-	init = WS_Snapshot(req_http->ctx->ws);
-	buf = WS_Alloc(req_http->ctx->ws, cache_param->gzip_buffer);
-	XXXAN(buf);
+	if (compressed_body_part->length == 0)
+		return (0);
+
+	ctx = req_http->ctx;
+	CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
 
 	stream = req_http->compression_stream;
 	AN(stream);
+
+	len = WS_ReserveAll(ctx->ws);
+	XXXAN(len);
+	stream->avail_out = len;
+
+	buf = WS_Reservation(ctx->ws);
+	AN(buf);
+	stream->next_out = (Bytef *)buf;
+
 	stream->next_in = (Bytef *)compressed_body_part->data;
 	stream->avail_in = compressed_body_part->length;
-	while(stream->avail_in > 0)
-	{
-		stream->next_out =(Bytef*) buf;
-		stream->avail_out = cache_param->gzip_buffer;
+
+	AN(stream->avail_in);
+
+	while(stream->avail_in > 0) {
 		int err = inflate(stream, Z_SYNC_FLUSH);
 		if ((err != Z_OK && err != Z_STREAM_END) ||
 		    (err == Z_STREAM_END && stream->avail_in != 0))
@@ -100,16 +113,13 @@ int uncompress_body_part(struct soap_req_http *req_http, body_part *compressed_b
 			sts = 1;
 			break;
 		}
-		Bytef *new_buf = (Bytef*)malloc(stream->total_out);
-		if (res_buf) memcpy(new_buf, res_buf, res_len);
-		memcpy(new_buf + res_len, buf, stream->next_out - (Bytef*)buf);
-		if (res_buf) free(res_buf);
-		res_buf = new_buf;
-		res_len += stream->next_out - (Bytef*)buf;
 	}
-	uncompressed_body_part->data = (char*)apr_pmemdup(req_http->pool, res_buf, res_len);
-	uncompressed_body_part->length = res_len;
-	if (res_buf) free(res_buf);
-	WS_Reset(req_http->ctx->ws, init);
+	assert(stream->avail_out <= len);
+	len -= stream->avail_out;
+
+	uncompressed_body_part->data = buf;
+	uncompressed_body_part->length = len;
+
+	WS_Release(ctx->ws, len);
 	return sts;
 }
