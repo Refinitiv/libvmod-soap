@@ -25,9 +25,18 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "config.h"
+
+#include "cache/cache.h"
 #include "vmod_soap.h"
+#include "vcc_soap_if.h"
+
 #include "vmod_soap_http.h"
 #include "vmod_soap_gzip.h"
+
+// XXX this should be replaced by a vmod parameter
+#include "common/common_param.h"
+extern volatile struct params * cache_param;
 
 /* ------------------------------------------------------/
    Init HTTP context with encoding type
@@ -65,7 +74,7 @@ void clean_gzip(struct soap_req_http *req_http)
 */
 int uncompress_body_part(struct soap_req_http *req_http, body_part *compressed_body_part, body_part *uncompressed_body_part)
 {
-	char		*init;
+	intptr_t	init;
 	z_stream	*stream;
 	char		*buf;
 	Bytef		*res_buf = 0;

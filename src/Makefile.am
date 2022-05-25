@@ -6,7 +6,7 @@ AM_CFLAGS = $(VARNISHAPI_CFLAGS) -Wall -Werror \
 	-I/usr/include/apr-1.0 \
 	-I$(VARNISHSRC)
 
-AM_LDFLAGS = $(VARNISHAPI_LIBS) $(VMOD_LDFLAGS) \
+AM_LDFLAGS = $(VMOD_LDFLAGS) \
 	-lxml2 \
 	-lapr-1
 

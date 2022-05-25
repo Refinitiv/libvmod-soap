@@ -25,11 +25,14 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "config.h"
+
+#include "cache/cache.h"
 #include "vmod_soap.h"
+#include "vcc_soap_if.h"
 
 #define POOL_KEY "VRN_IH_PK"
 
-static pthread_mutex_t	soap_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int		refcount = 0;
 static apr_pool_t	*apr_pool = NULL;
 
@@ -61,11 +64,12 @@ static void clean_apr()
 /* -------------------------------------------------------------------------------------/
    init vcl
 */
-static void clean_vcl(void *priv)
+static void clean_vcl(VRT_CTX, void *priv)
 {
 	struct priv_soap_vcl *priv_soap_vcl;
 	struct soap_namespace *ns, *ns2;
 
+	CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
 	CAST_OBJ_NOTNULL(priv_soap_vcl, priv, PRIV_SOAP_VCL_MAGIC);
 
 	VSLIST_FOREACH_SAFE(ns, &priv_soap_vcl->namespaces, list, ns2) {
@@ -114,11 +118,11 @@ static struct priv_soap_task* init_task(VRT_CTX)
 /* -----------------------------------------------------------------/
    destroy session
 */
-static void clean_task(void *priv)
+static void clean_task(VRT_CTX, void *priv)
 {
 	struct priv_soap_task *soap_task;
 
-	AN(priv);
+	CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
 	CAST_OBJ_NOTNULL(soap_task, priv, PRIV_SOAP_TASK_MAGIC);
 
 	clean_req_xml(soap_task->req_xml);
@@ -224,13 +228,20 @@ int process_request(struct priv_soap_task *task, enum soap_state state)
 	return (0);
 }
 
+static const struct vmod_priv_methods priv_soap_vcl_methods[1] = {{
+	.magic = VMOD_PRIV_METHODS_MAGIC,
+	.type = "soap priv_vcl",
+	.fini = clean_vcl
+}};
+
 /*
  * handle vmod internal state, vmod init/fini and/or varnish callback
  * (un)registration here.
  *
  */
-int __match_proto__(vmod_event_f)
-	event_function(VRT_CTX, struct vmod_priv *priv /* PRIV_VCL */, enum vcl_event_e e)
+int v_matchproto_(vmod_event_f)
+	VPFX(event_function)(VRT_CTX, struct vmod_priv *priv /* PRIV_VCL */,
+	    enum vcl_event_e e)
 {
 	struct priv_soap_vcl *priv_soap_vcl;
 
@@ -238,34 +249,36 @@ int __match_proto__(vmod_event_f)
 
 	switch (e) {
 	case VCL_EVENT_LOAD:
-		AZ(pthread_mutex_lock(&soap_mutex));
 		if(0 == refcount++) {
 			init_xml();
 			init_apr();
 		}
-		AZ(pthread_mutex_unlock(&soap_mutex));
 
 		priv_soap_vcl = init_vcl();
 		priv->priv = priv_soap_vcl;
-		priv->free = clean_vcl;
+		priv->methods = priv_soap_vcl_methods;
 		break;
 	case VCL_EVENT_WARM:
 		break;
 	case VCL_EVENT_COLD:
 		break;
 	case VCL_EVENT_DISCARD:
-		AZ(pthread_mutex_lock(&soap_mutex));
 		if(0 == --refcount) {
 			clean_xml();
 			clean_apr();
 		}
-		AZ(pthread_mutex_unlock(&soap_mutex));
 		break;
 	default:
 		return (0);
 	}
 	return (0);
 }
+
+static const struct vmod_priv_methods priv_soap_task_methods[1] = {{
+	.magic = VMOD_PRIV_METHODS_MAGIC,
+	.type = "soap priv_task",
+	.fini = clean_task
+}};
 
 sess_record* priv_soap_get(VRT_CTX, struct vmod_priv *priv /* PRIV_TASK */)
 {
@@ -275,7 +288,7 @@ sess_record* priv_soap_get(VRT_CTX, struct vmod_priv *priv /* PRIV_TASK */)
 	AN(priv);
 	if(priv->priv == NULL) {
 		priv->priv = init_task(ctx);
-		priv->free = clean_task;
+		priv->methods = priv_soap_task_methods;
 	}
 	CAST_OBJ_NOTNULL(soap_task, priv->priv, PRIV_SOAP_TASK_MAGIC);
 	if(soap_task->ctx != ctx) {
@@ -290,7 +303,7 @@ sess_record* priv_soap_get(VRT_CTX, struct vmod_priv *priv /* PRIV_TASK */)
 	return (soap_task);
 }
 
-VCL_BOOL __match_proto__(td_soap_is_valid)
+VCL_BOOL v_matchproto_(td_soap_is_valid)
 	vmod_is_valid(VRT_CTX, struct vmod_priv *priv /* PRIV_TASK */)
 {
 	struct priv_soap_task *soap_task = priv_soap_get(ctx, priv);
@@ -298,7 +311,7 @@ VCL_BOOL __match_proto__(td_soap_is_valid)
 	return (process_request(soap_task, ACTION_AVAILABLE) == 0);
 }
 
-VCL_STRING __match_proto__(td_soap_action)
+VCL_STRING v_matchproto_(td_soap_action)
 	vmod_action(VRT_CTX, struct vmod_priv *priv /* PRIV_TASK */)
 {
 	struct priv_soap_task *soap_task = priv_soap_get(ctx, priv);
@@ -308,7 +321,7 @@ VCL_STRING __match_proto__(td_soap_action)
 	return ("");
 }
 
-VCL_STRING __match_proto__(td_soap_action_namespace)
+VCL_STRING v_matchproto_(td_soap_action_namespace)
 	vmod_action_namespace(VRT_CTX, struct vmod_priv *priv /* PRIV_TASK */)
 {
 	struct priv_soap_task *soap_task = priv_soap_get(ctx, priv);
@@ -318,7 +331,7 @@ VCL_STRING __match_proto__(td_soap_action_namespace)
 	return ("");
 }
 
-VCL_VOID __match_proto__(td_soap_add_namespace)
+VCL_VOID v_matchproto_(td_soap_add_namespace)
 	vmod_add_namespace(VRT_CTX, struct vmod_priv *priv /* PRIV_VCL */, VCL_STRING prefix, VCL_STRING uri)
 {
 	struct priv_soap_vcl	    *priv_soap_vcl;
@@ -334,7 +347,7 @@ VCL_VOID __match_proto__(td_soap_add_namespace)
 	VSLIST_INSERT_HEAD(&priv_soap_vcl->namespaces, namespace, list);
 }
 
-VCL_STRING __match_proto__(td_soap_xpath_header)
+VCL_STRING v_matchproto_(td_soap_xpath_header)
 	vmod_xpath_header(VRT_CTX, struct vmod_priv *priv_vcl /* PRIV_VCL */, struct vmod_priv *priv_task /* PRIV_TASK */, VCL_STRING xpath)
 {
 	struct priv_soap_vcl *soap_vcl;;
@@ -352,7 +365,7 @@ VCL_STRING __match_proto__(td_soap_xpath_header)
 	return ("");
 }
 
-VCL_STRING __match_proto__(td_soap_xpath_body)
+VCL_STRING v_matchproto_(td_soap_xpath_body)
 	vmod_xpath_body(VRT_CTX, struct vmod_priv *priv_vcl /* PRIV_VCL */, struct vmod_priv *priv_task /* PRIV_TASK */, VCL_STRING xpath)
 {
 	struct priv_soap_vcl *soap_vcl;;
@@ -370,7 +383,7 @@ VCL_STRING __match_proto__(td_soap_xpath_body)
 	return ("");
 }
 
-VCL_VOID __match_proto__(td_soap_synthetic)
+VCL_VOID v_matchproto_(td_soap_synthetic)
 	vmod_synthetic(VRT_CTX, struct vmod_priv *priv_task /* PRIV_TASK */, VCL_INT soap_code, VCL_STRING soap_message)
 {
 	struct priv_soap_task *soap_task;
