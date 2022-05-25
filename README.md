@@ -11,6 +11,10 @@ Usage and Examples
 =============
 For a given SOAP XML message stored in Request's body :
 ```xml
+POST /webservice HTTP/1.1
+Host: soapservices.com
+Content-Type: text/xml; charset=utf-8
+
 <?xml version="1.0" encoding="utf-8"?>
 <Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/"><Body>
 <auth:Login xmlns:auth="http://your/namespace/uri/auth">
