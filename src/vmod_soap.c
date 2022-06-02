@@ -98,22 +98,35 @@ static struct priv_soap_vcl* init_vcl()
 /* ------------------------------------------------------------------/
    initialize session
 */
+
+#define TASK_ALLOC_OBJ(ctx, ptr, magic) do {			\
+	assert(sizeof *(ptr) <= UINT_MAX);			\
+	ptr = WS_Alloc((ctx)->ws, sizeof *(ptr));		\
+	if ((ptr) == NULL)					\
+		VRT_fail(ctx, "Out of workspace for " #magic);	\
+	else							\
+		INIT_OBJ(ptr, magic);				\
+} while(0)
+
 static struct priv_soap_task* init_task(VRT_CTX)
 {
 	struct priv_soap_task *soap_task;
 
-	ALLOC_OBJ(soap_task, PRIV_SOAP_TASK_MAGIC);
-	AN(soap_task);
+	TASK_ALLOC_OBJ(ctx, soap_task, PRIV_SOAP_TASK_MAGIC);
+	if (! soap_task)
+		return (NULL);
 
 	soap_task->ctx = ctx;
 
+	TASK_ALLOC_OBJ(ctx, soap_task->req_http, SOAP_REQ_HTTP_MAGIC);
+	if (! soap_task->req_http)
+		return (NULL);
+
+	TASK_ALLOC_OBJ(ctx, soap_task->req_xml, SOAP_REQ_XML_MAGIC);
+	if (! soap_task->req_xml)
+		return (NULL);
+
 	XXXAZ(apr_pool_create(&soap_task->pool, apr_pool));
-
-	ALLOC_OBJ(soap_task->req_http, SOAP_REQ_HTTP_MAGIC);
-	XXXAN(soap_task->req_http);
-
-	ALLOC_OBJ(soap_task->req_xml, SOAP_REQ_XML_MAGIC);
-	XXXAN(soap_task->req_xml);
 
 	VSLb(soap_task->ctx->vsl, SLT_Debug, "init_task");
 	return soap_task;
@@ -136,16 +149,13 @@ static void clean_task(VRT_CTX, void *priv)
 	INIT_OBJ(soap_task->req_http, SOAP_REQ_HTTP_MAGIC);
 
 	INIT_OBJ(soap_task->req_xml, SOAP_REQ_XML_MAGIC);
-	FREE_OBJ(soap_task->req_xml);
 
 	INIT_OBJ(soap_task->req_http, SOAP_REQ_HTTP_MAGIC);
-	FREE_OBJ(soap_task->req_http);
 
 	AN(soap_task->pool);
 	apr_pool_destroy(soap_task->pool);
 
 	INIT_OBJ(soap_task, PRIV_SOAP_TASK_MAGIC);
-	FREE_OBJ(soap_task);
 }
 
 int process_request(struct priv_soap_task *task, enum soap_state state)
