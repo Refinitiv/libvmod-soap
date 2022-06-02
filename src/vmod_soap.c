@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2019, Refinitiv
+ * Copyright 2022 UPLEX - Nils Goroll Systemoptimierung
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -392,4 +393,103 @@ VCL_VOID v_matchproto_(td_soap_synthetic)
 	soap_task = priv_soap_get(ctx, priv_task);
 
 	synth_soap_fault(soap_task->req_xml, soap_code, soap_message);
+}
+
+/*
+ * ============================================================
+ *
+ * Object Interface (rework)
+ */
+
+enum soap_source {
+	SOAPS_INVALID = 0,
+	SOAPS_REQ_BODY,
+	SOAPS_RESP_BODY
+};
+
+struct VPFX(soap_parser) {
+	unsigned		magic;
+#define SOAP_PARSER_MAGIC	0x017ce81e
+	char			*vcl_name;
+	enum soap_source	source;
+	enum vrb_what_e	vrb_what;
+};
+
+VCL_VOID
+vmod_parser__init(VRT_CTX, struct VPFX(soap_parser) **soapp,
+    const char *vcl_name, struct VARGS(parser__init)*args)
+{
+	struct VPFX(soap_parser) *soap;
+
+	CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
+	AN(soapp);
+	AZ(*soapp);
+	AN(vcl_name);
+	AN(args);
+
+	ALLOC_OBJ(soap, SOAP_PARSER_MAGIC);
+	AN(soap);
+
+	REPLACE(soap->vcl_name, vcl_name);
+	if (args->source == VENUM(req_body)) {
+		soap->source = SOAPS_REQ_BODY;
+		if (! args->valid_req_body) {
+			VRT_fail(ctx, "new %s: req_body argument "
+			    "is required with source=req_body",
+			    vcl_name);
+			vmod_parser__fini(&soap);
+			return;
+		}
+		if (args->req_body == VENUM(all))
+			soap->vrb_what = VRB_ALL;
+		else if (args->req_body == VENUM(cached))
+			soap->vrb_what = VRB_CACHED;
+		else
+			WRONG("req_body argument");
+	} else if (args->source == VENUM(resp_body)) {
+		soap->source = SOAPS_RESP_BODY;
+	} else {
+		WRONG("source argument");
+	}
+	*soapp = soap;
+}
+
+VCL_VOID
+vmod_parser__fini(struct VPFX(soap_parser) **soapp)
+{
+	struct VPFX(soap_parser) *soap;
+
+	TAKE_OBJ_NOTNULL(soap, soapp, SOAP_PARSER_MAGIC);
+	REPLACE(soap->vcl_name, NULL);
+	FREE_OBJ(soap);
+}
+
+VCL_VOID
+vmod_parser_add_namespace(VRT_CTX,
+    struct VPFX(soap_parser) *soap, VCL_STRING pfx, VCL_STRING uri)
+{
+
+	CHECK_OBJ_NOTNULL(soap, SOAP_PARSER_MAGIC);
+	AN(pfx);
+	AN(uri);
+}
+
+VCL_STRING
+vmod_parser_header_xpath(VRT_CTX,
+    struct VPFX(soap_parser) *soap, VCL_STRING xpath)
+{
+
+	CHECK_OBJ_NOTNULL(soap, SOAP_PARSER_MAGIC);
+	AN(xpath);
+	return (NULL);
+}
+
+VCL_STRING
+vmod_parser_body_xpath(VRT_CTX,
+    struct VPFX(soap_parser) *soap, VCL_STRING xpath)
+{
+
+	CHECK_OBJ_NOTNULL(soap, SOAP_PARSER_MAGIC);
+	AN(xpath);
+	return (NULL);
 }
