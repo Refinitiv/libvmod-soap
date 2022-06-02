@@ -408,11 +408,12 @@ enum soap_source {
 };
 
 struct VPFX(soap_parser) {
-	unsigned		magic;
-#define SOAP_PARSER_MAGIC	0x017ce81e
-	char			*vcl_name;
-	enum soap_source	source;
-	enum vrb_what_e	vrb_what;
+	unsigned			magic;
+#define SOAP_PARSER_MAGIC		0x017ce81e
+	enum soap_source		source;
+	enum vrb_what_e			vrb_what;
+	char				*vcl_name;
+	VSLIST_HEAD(, soap_namespace)	namespaces;
 };
 
 VCL_VOID
@@ -430,7 +431,6 @@ vmod_parser__init(VRT_CTX, struct VPFX(soap_parser) **soapp,
 	ALLOC_OBJ(soap, SOAP_PARSER_MAGIC);
 	AN(soap);
 
-	REPLACE(soap->vcl_name, vcl_name);
 	if (args->source == VENUM(req_body)) {
 		soap->source = SOAPS_REQ_BODY;
 		if (! args->valid_req_body) {
@@ -451,6 +451,8 @@ vmod_parser__init(VRT_CTX, struct VPFX(soap_parser) **soapp,
 	} else {
 		WRONG("source argument");
 	}
+	REPLACE(soap->vcl_name, vcl_name);
+	VSLIST_INIT(&soap->namespaces);
 	*soapp = soap;
 }
 
@@ -458,20 +460,42 @@ VCL_VOID
 vmod_parser__fini(struct VPFX(soap_parser) **soapp)
 {
 	struct VPFX(soap_parser) *soap;
+	struct soap_namespace *ns, *ns2;
 
 	TAKE_OBJ_NOTNULL(soap, soapp, SOAP_PARSER_MAGIC);
 	REPLACE(soap->vcl_name, NULL);
+
+	// ref clean_vcl
+	VSLIST_FOREACH_SAFE(ns, &soap->namespaces, list, ns2) {
+		VSLIST_REMOVE_HEAD(&soap->namespaces, list);
+		FREE_OBJ(ns);
+	}
+
 	FREE_OBJ(soap);
 }
 
 VCL_VOID
 vmod_parser_add_namespace(VRT_CTX,
-    struct VPFX(soap_parser) *soap, VCL_STRING pfx, VCL_STRING uri)
+    struct VPFX(soap_parser) *soap, VCL_STRING prefix, VCL_STRING uri)
 {
+	struct soap_namespace *ns;
 
 	CHECK_OBJ_NOTNULL(soap, SOAP_PARSER_MAGIC);
-	AN(pfx);
-	AN(uri);
+
+	if (prefix == NULL || *prefix == '\0' ||
+	    uri == NULL || *uri == '\0') {
+		VRT_fail(ctx, "%s.add_namespace: prefix or uri "
+		    "empty", soap->vcl_name);
+		return;
+	}
+
+	// ref vmod_add_namespace
+	ALLOC_OBJ(ns, PRIV_SOAP_NAMESPACE_MAGIC);
+	AN(ns);
+
+	ns->prefix = prefix;
+	ns->uri = uri;
+	VSLIST_INSERT_HEAD(&soap->namespaces, ns, list);
 }
 
 VCL_STRING
