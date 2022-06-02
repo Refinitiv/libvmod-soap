@@ -250,6 +250,10 @@ int v_matchproto_(vmod_event_f)
 
 	switch (e) {
 	case VCL_EVENT_LOAD:
+		if (! xmlHasFeature(XML_WITH_THREAD)) {
+			VRT_fail(ctx, "Need libxml2 with threads support");
+			return (1);
+		}
 		if(0 == refcount++) {
 			init_xml();
 			init_apr();
