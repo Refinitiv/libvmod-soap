@@ -586,12 +586,33 @@ vmod_parser_add_namespace(VRT_CTX,
 	VSLIST_INSERT_HEAD(&soap->namespaces, ns, list);
 }
 
+sess_record *
+obj_priv_soap_get(VRT_CTX, const struct VPFX(soap_parser) *soap)
+{
+	struct vmod_priv *priv;
+
+	CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
+	CHECK_OBJ_NOTNULL(soap, SOAP_PARSER_MAGIC);
+
+	soap_init_thread(ctx);
+
+	priv = VRT_priv_task(ctx, soap);
+	if (priv == NULL) {
+		VRT_fail(ctx, "No priv_task");
+		return (NULL);
+	}
+
+	return (priv_soap_get(ctx, priv));
+}
+
 VCL_STRING
 vmod_parser_header_xpath(VRT_CTX,
     struct VPFX(soap_parser) *soap, VCL_STRING xpath)
 {
+	struct priv_soap_task *soap_task = obj_priv_soap_get(ctx, soap);
 
-	CHECK_OBJ_NOTNULL(soap, SOAP_PARSER_MAGIC);
+	if (soap_task == NULL)
+		return (NULL);
 	AN(xpath);
 	return (NULL);
 }
@@ -600,8 +621,10 @@ VCL_STRING
 vmod_parser_body_xpath(VRT_CTX,
     struct VPFX(soap_parser) *soap, VCL_STRING xpath)
 {
+	struct priv_soap_task *soap_task = obj_priv_soap_get(ctx, soap);
 
-	CHECK_OBJ_NOTNULL(soap, SOAP_PARSER_MAGIC);
+	if (soap_task == NULL)
+		return (NULL);
 	AN(xpath);
 	return (NULL);
 }
