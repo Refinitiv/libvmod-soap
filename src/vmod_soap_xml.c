@@ -78,6 +78,25 @@ void add_soap_error(struct soap_req_xml *req_xml, int status, const char* fmt, .
 	va_end(args);
 }
 
+/* test-register a namespace */
+int
+test_ns(VCL_STRING prefix, VCL_STRING uri)
+{
+	xmlDocPtr doc;
+	xmlXPathContextPtr xpathCtx;
+	int r;
+
+	doc = xmlNewDoc(XMLSTR("1.0"));
+	XXXAN(doc);
+	xpathCtx = xmlXPathNewContext(doc);
+	XXXAN(xpathCtx);
+	r = xmlXPathRegisterNs(xpathCtx, XMLSTR(prefix), XMLSTR(uri));
+	xmlXPathFreeContext(xpathCtx);
+	xmlFreeDoc(doc);
+
+	return (r);
+}
+
 /* -------------------------------------------------------------------------------------/
    Runs XPath expression against single xml node
 */

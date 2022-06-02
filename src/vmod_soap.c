@@ -560,6 +560,13 @@ vmod_parser_add_namespace(VRT_CTX,
 	//// called in _init()
 	// soap_init_thread(ctx->vsl);
 
+	if (test_ns(prefix, uri)) {
+		// XXX no idea if this can ever fail
+		VRT_fail(ctx, "%s.add_namespace: validation failed",
+		    soap->vcl_name);
+		return;
+	}
+
 	// ref vmod_add_namespace
 	ALLOC_OBJ(ns, PRIV_SOAP_NAMESPACE_MAGIC);
 	AN(ns);
