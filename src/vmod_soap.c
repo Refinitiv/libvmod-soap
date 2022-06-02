@@ -28,7 +28,10 @@
 
 #include "config.h"
 
-#include "cache/cache.h"
+#include <cache/cache.h>
+#include <vcl.h>
+#include <vsb.h>
+
 #include "vmod_soap.h"
 #include "vcc_soap_if.h"
 
@@ -405,6 +408,59 @@ VCL_VOID v_matchproto_(td_soap_synthetic)
  * Object Interface (rework)
  */
 
+static void
+soap_vsl_generic_error(void *priv, const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	VSLbv(priv, SLT_Error, fmt, ap);
+	va_end(ap);
+}
+
+static void
+soap_vsl_structured_error(void *priv, xmlErrorPtr error)
+{
+
+	AN(error);
+	VSLb(priv, SLT_Error, "xml: domain=%d, code=%d, msg=%s",
+	    error->domain, error->code, error->message);
+}
+
+static void
+soap_vsb_generic_error(void *priv, const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	VSB_vprintf(priv, fmt, ap);
+	va_end(ap);
+}
+
+static void
+soap_vsb_structured_error(void *priv, xmlErrorPtr error)
+{
+
+	AN(error);
+	VSB_printf(priv, "xml: domain=%d, code=%d, msg=%s",
+	    error->domain, error->code, error->message);
+}
+
+static void
+soap_init_thread(VRT_CTX)
+{
+
+	CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
+	if (ctx->vsl != NULL) {
+		xmlSetGenericErrorFunc(ctx->vsl, soap_vsl_generic_error);
+		xmlSetStructuredErrorFunc(ctx->vsl, soap_vsl_structured_error);
+	} else {
+		AN(ctx->msg);
+		xmlSetGenericErrorFunc(ctx->msg, soap_vsb_generic_error);
+		xmlSetStructuredErrorFunc(ctx->msg, soap_vsb_structured_error);
+	}
+}
+
 enum soap_source {
 	SOAPS_INVALID = 0,
 	SOAPS_REQ_BODY,
@@ -431,6 +487,8 @@ vmod_parser__init(VRT_CTX, struct VPFX(soap_parser) **soapp,
 	AZ(*soapp);
 	AN(vcl_name);
 	AN(args);
+
+	soap_init_thread(ctx);
 
 	ALLOC_OBJ(soap, SOAP_PARSER_MAGIC);
 	AN(soap);
@@ -486,12 +544,21 @@ vmod_parser_add_namespace(VRT_CTX,
 
 	CHECK_OBJ_NOTNULL(soap, SOAP_PARSER_MAGIC);
 
+	if (ctx->method != VCL_MET_INIT) {
+		VRT_fail(ctx, "%s.add_namespace() may only be called "
+		    "from vcl_init{}", soap->vcl_name);
+		return;
+	}
+
 	if (prefix == NULL || *prefix == '\0' ||
 	    uri == NULL || *uri == '\0') {
 		VRT_fail(ctx, "%s.add_namespace: prefix or uri "
 		    "empty", soap->vcl_name);
 		return;
 	}
+
+	//// called in _init()
+	// soap_init_thread(ctx->vsl);
 
 	// ref vmod_add_namespace
 	ALLOC_OBJ(ns, PRIV_SOAP_NAMESPACE_MAGIC);
