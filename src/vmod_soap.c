@@ -165,7 +165,6 @@ process_init_read(struct priv_soap_task *task)
 	AN(task);
 	assert(task->state == NONE);
 
-	VSLb(task->ctx->vsl, SLT_Debug, "process_request 1: %d", task->state);
 	task->req_http->pool = task->pool;
 	task->req_http->ctx = task->ctx;
 	init_req_http(task->req_http);
@@ -196,6 +195,8 @@ int process_request(struct priv_soap_task *task, enum soap_state state)
 	VSLb(task->ctx->vsl, SLT_Debug, "process_request 0: %d/%d", task->state, state);
 	ssize_t bytes_read = 0;
 	while (task->state < state) {
+		VSLb(task->ctx->vsl, SLT_Debug, "process_request: %d/%d (%ld bytes)",
+		    task->state, state, task->bytes_total);
 		switch (task->state) {
 		case NONE:  // init
 			r = process_init_read(task);
@@ -205,7 +206,6 @@ int process_request(struct priv_soap_task *task, enum soap_state state)
 		case INIT:
 		case HEADER_DONE:
 		case ACTION_AVAILABLE:
-			VSLb(task->ctx->vsl, SLT_Debug, "process_request 5: %d/%d (%ld bytes)", task->state, state, task->bytes_total);
 			if (task->bytes_total <= 0) {
 				VSLb(task->ctx->vsl, SLT_Error, "Not enough data");
 				return (-1);
