@@ -46,7 +46,6 @@ enum soap_state {
 	HEADER_DONE,      // Header element completely read
 	ACTION_AVAILABLE, // Body parsing is started and action name and namespace available
 	BODY_DONE,        // Body element completely read
-	DONE
 };
 
 /* -------------------------------------------------------------------------------------/
@@ -270,12 +269,10 @@ int process_request(struct priv_soap_task *task, enum soap_state state)
 				return (r);
 			break;
 		case BODY_DONE:  // read from memory
-		case DONE:
 			VSLb(task->ctx->vsl, SLT_Debug, "process_request 8: %d/%d", task->state, state);
 			break;
 		default:
-			VSLb(task->ctx->vsl, SLT_Debug, "process_request 9: %d/%d", task->state, state);
-			break;
+			WRONG("task->state");
 		}
 	}
 	VSLb(task->ctx->vsl, SLT_Debug, "process_request .: %d/%d", task->state, state);
