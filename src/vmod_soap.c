@@ -158,32 +158,49 @@ static void clean_task(VRT_CTX, void *priv)
 	INIT_OBJ(soap_task, PRIV_SOAP_TASK_MAGIC);
 }
 
+static int
+process_init_read(struct priv_soap_task *task)
+{
+
+	AN(task);
+	assert(task->state == NONE);
+
+	VSLb(task->ctx->vsl, SLT_Debug, "process_request 1: %d", task->state);
+	task->req_http->pool = task->pool;
+	task->req_http->ctx = task->ctx;
+	init_req_http(task->req_http);
+	if (task->req_http->encoding != CE_GZIP &&
+	    task->req_http->encoding != CE_NONE) {
+		VSLb(task->ctx->vsl, SLT_Error, "Unsupported Content-Encoding");
+		return (-1);
+	}
+
+	task->req_xml->pool = task->pool;
+	task->req_xml->ctx = task->ctx;
+	init_req_xml(task->req_xml);
+
+	task->bytes_total = http_GetContentLength(task->ctx->http_req);
+	if(task->bytes_total <= 0) {
+		VSLb(task->ctx->vsl, SLT_Error,
+		    "Invalid content-length %ld", task->bytes_total);
+		return (-1);
+	}
+	task->state = INIT;
+	return (0);
+}
+
 int process_request(struct priv_soap_task *task, enum soap_state state)
 {
+	int r;
+
 	VSLb(task->ctx->vsl, SLT_Debug, "process_request 0: %d/%d", task->state, state);
 	ssize_t bytes_read = 0;
 	while (task->state < state) {
 		switch (task->state) {
 		case NONE:  // init
-			VSLb(task->ctx->vsl, SLT_Debug, "process_request 1: %d/%d", task->state, state);
-			task->req_http->pool = task->pool;
-			task->req_http->ctx = task->ctx;
-			init_req_http(task->req_http);
-			if (task->req_http->encoding != CE_GZIP && task->req_http->encoding != CE_NONE) {
-				VSLb(task->ctx->vsl, SLT_Error, "Unsupported Content-Encoding");
-				return (-1);
-			}
-
-			task->req_xml->pool = task->pool;
-			task->req_xml->ctx = task->ctx;
-			init_req_xml(task->req_xml);
-
-			task->bytes_total = http_GetContentLength(task->ctx->http_req);
-			if(task->bytes_total <= 0) {
-				VSLb(task->ctx->vsl, SLT_Error, "Invalid content-length %ld", task->bytes_total);
-				return (-1);
-			}
-			task->state = INIT;
+			r = process_init_read(task);
+			if (r)
+				return (r);
 			break;
 		case INIT:
 		case HEADER_DONE:
