@@ -188,12 +188,71 @@ process_init_read(struct priv_soap_task *task)
 	return (0);
 }
 
+static int
+process_read(struct priv_soap_task *task)
+{
+
+	AN(task);
+	assert(task->state == INIT ||
+	    task->state == HEADER_DONE ||
+	    task->state == ACTION_AVAILABLE);
+
+	if (task->bytes_total <= 0) {
+		VSLb(task->ctx->vsl, SLT_Error, "Not enough data");
+		return (-1);
+	}
+	// If everything is read, but state not switched to BODY_DONE that mean
+	// XML body isn't present in request
+	if (task->bytes_read >= task->bytes_total) {
+		VSLb(task->ctx->vsl, SLT_Error,
+		    "SOAP: http read error: incomplete xml");
+		return (-1);
+	}
+	while (task->bytes_read < task->bytes_total) {
+		int just_read = read_body_part(task->req_http,
+		    task->bytes_read, task->bytes_total);
+		if (just_read <= 0) {
+			VSLb(task->ctx->vsl, SLT_Error,
+			    "SOAP: http read failed (%d, errno: %d)",
+			    just_read, errno);
+			return (-1);
+		}
+		task->bytes_read += just_read;
+		VSLb(task->ctx->vsl, SLT_Debug, "process_request 6: "
+		    "read %d bytes", just_read);
+
+		// parse chunk
+		VSLb(task->ctx->vsl, SLT_Debug, "process_request 7: "
+		    "total %d bytes", task->req_http->body.length);
+		if (parse_soap_chunk(task->req_xml, task->req_http->body.data,
+			task->req_http->body.length)) {
+			VSLb(task->ctx->vsl, SLT_Error,
+			    "SOAP: soap read failed %d", errno);
+			return (-1);
+		}
+
+		if (task->req_xml->body) {
+			task->state = BODY_DONE;
+			break;
+		}
+		if (task->req_xml->action_namespace &&
+		    task->req_xml->action_name) {
+			task->state = ACTION_AVAILABLE;
+			break;
+		}
+		if (task->req_xml->header) {
+			task->state = HEADER_DONE;
+			break;
+		}
+	}
+	return (0);
+}
+
 int process_request(struct priv_soap_task *task, enum soap_state state)
 {
 	int r;
 
 	VSLb(task->ctx->vsl, SLT_Debug, "process_request 0: %d/%d", task->state, state);
-	ssize_t bytes_read = 0;
 	while (task->state < state) {
 		VSLb(task->ctx->vsl, SLT_Debug, "process_request: %d/%d (%ld bytes)",
 		    task->state, state, task->bytes_total);
@@ -206,45 +265,9 @@ int process_request(struct priv_soap_task *task, enum soap_state state)
 		case INIT:
 		case HEADER_DONE:
 		case ACTION_AVAILABLE:
-			if (task->bytes_total <= 0) {
-				VSLb(task->ctx->vsl, SLT_Error, "Not enough data");
-				return (-1);
-			}
-			// If everything is read, but state not switched to BODY_DONE that mean
-			// XML body isn't present in request
-			if (bytes_read >= task->bytes_total) {
-				VSLb(task->ctx->vsl, SLT_Error, "SOAP: http read error: incomplete xml");
-				return (-1);
-			}
-			while (bytes_read < task->bytes_total) {
-				int just_read = read_body_part(task->req_http, bytes_read, task->bytes_total);
-				if (just_read <= 0) {
-					VSLb(task->ctx->vsl, SLT_Error, "SOAP: http read failed (%d, errno: %d)", just_read, errno);
-					return (-1);
-				}
-				bytes_read += just_read;
-				VSLb(task->ctx->vsl, SLT_Debug, "process_request 6: read %d bytes", just_read);
-
-				// parse chunk
-				VSLb(task->ctx->vsl, SLT_Debug, "process_request 7: tota %d bytes", task->req_http->body.length);
-				if (parse_soap_chunk(task->req_xml, task->req_http->body.data, task->req_http->body.length)) {
-					VSLb(task->ctx->vsl, SLT_Error, "SOAP: soap read failed %d", errno);
-					return (-1);
-				}
-
-				if (task->req_xml->body) {
-					task->state = BODY_DONE;
-					break;
-				}
-				if (task->req_xml->action_namespace && task->req_xml->action_name) {
-					task->state = ACTION_AVAILABLE;
-					break;
-				}
-				if (task->req_xml->header) {
-					task->state = HEADER_DONE;
-					break;
-				}
-			}
+			r = process_read(task);
+			if (r)
+				return (r);
 			break;
 		case BODY_DONE:  // read from memory
 		case DONE:

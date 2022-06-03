@@ -75,6 +75,7 @@ typedef struct priv_soap_task {
 	struct soap_req_http		*req_http;
 	struct soap_req_xml		*req_xml;
 	int				state;
+	ssize_t				bytes_read;
 	ssize_t				bytes_total;
 } sess_record;
 
