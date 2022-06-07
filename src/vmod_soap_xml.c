@@ -32,8 +32,6 @@
 #include "vcc_soap_if.h"
 
 #include "vmod_soap_xml.h"
-#include "vmod_soap_http.h"
-#include "vmod_soap_request.h"
 #include <libxml/xpath.h>
 #include <libxml/xpathInternals.h>
 
@@ -355,9 +353,17 @@ void synth_soap_fault(struct soap_req_xml *req_xml, int code, const char* messag
 	xmlFreeDoc(doc);
 }
 
-int parse_soap_chunk(struct soap_req_xml *soap_req_xml, const char *data, int length)
+int v_matchproto_(objiterate_f)
+soap_iter_f(void *priv, unsigned flush, const void *ptr, ssize_t len)
 {
-	int err = xmlParseChunk(soap_req_xml->parser, data, length, 0);
+	struct soap_req_xml *soap_req_xml;
+	int err;
+
+	CAST_OBJ_NOTNULL(soap_req_xml, priv, SOAP_REQ_XML_MAGIC);
+	(void) flush;
+	AN(ptr);
+
+	err = xmlParseChunk(soap_req_xml->parser, ptr, len, 0);
 
 	// real error occured
 	if (soap_req_xml->error || (err && !soap_req_xml->stop))

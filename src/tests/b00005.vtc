@@ -12,9 +12,11 @@ server s1 {
 
 varnish v1 -vcl+backend {
     import ${vmod_soap};
+    import std;
 
     sub vcl_recv
     {
+            std.cache_req_body(1M);
             set req.http.soap-ws-ns = soap.action_namespace();
             if(!req.http.soap-ws-ns) {
                     return (synth(400, "SOAP Action URI is mandatory"));

@@ -2,15 +2,21 @@ varnishtest "No Content-Length (or zero/negative) / Transfer-Encoding: chunked"
 
 server s1 {
         rxreq
+        expect req.http.content-length == 215
+        txresp -status 200
+
+        rxreq
         expect req.http.content-length == 181
         txresp -status 200
 } -start
 
 varnish v1 -vcl+backend {
     import ${vmod_soap};
+    import std;
 
     sub vcl_recv
     {
+            std.cache_req_body(1M);
             if(soap.is_valid()) {
                     set req.http.soap-ws-ns = soap.action_namespace();
             }
@@ -20,6 +26,7 @@ varnish v1 -vcl+backend {
     }
 } -start
 
+# chunked is supported by varnish-cache
 client c1 {
         timeout 4
         txreq -req POST -nolen -hdr "Transfer-Encoding: chunked"
@@ -30,19 +37,10 @@ client c1 {
 </Body></Envelope>}
         chunkedlen 0
         rxresp
-        expect resp.status == 400
+        expect resp.status == 200
 } -run
 
 client c1 {
-        timeout 4
-        txreq -req POST -nolen -body {<?xml version="1.0" encoding="utf-8"?>
-        <Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
-<Header><userIdentity/></Header><Body>
-<Test xmlns="http://schemas.reuters.com/mytest"/>
-</Body></Envelope>}
-        rxresp
-        expect resp.status == 400
-
         txreq -req POST -nolen -hdr "Content-Length: -42" -body {<?xml version="1.0" encoding="utf-8"?>
         <Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/"><Body>
 <Test xmlns="http://schemas.reuters.com/mytest"/></Body></Envelope>}

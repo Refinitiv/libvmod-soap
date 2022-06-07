@@ -3,15 +3,22 @@ varnishtest "No Content-Length (or zero/negative) / Transfer-Encoding: chunked"
 server s1 {
         rxreq
         expect req.http.soap-ws-ns == "http://schemas.reuters.com/mytest"
+        expect req.http.content-length == 215
+        txresp -status 200
+
+        rxreq
+        expect req.http.soap-ws-ns == "http://schemas.reuters.com/mytest"
         expect req.http.content-length == 181
         txresp -status 200
 } -start
 
 varnish v1 -vcl+backend {
     import ${vmod_soap};
+    import std;
 
     sub vcl_recv
     {
+            std.cache_req_body(1K);
             if(soap.is_valid()) {
                     set req.http.soap-ws-ns = soap.action_namespace();
             }
@@ -31,7 +38,7 @@ client c1 {
 </Body></Envelope>}
         chunkedlen 0
         rxresp
-        expect resp.status == 400
+        expect resp.status == 200
 } -run
 
 client c1 {

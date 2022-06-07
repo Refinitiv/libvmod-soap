@@ -46,6 +46,7 @@ enum soap_state {
 	HEADER_DONE,      // Header element completely read
 	ACTION_AVAILABLE, // Body parsing is started and action name and namespace available
 	BODY_DONE,        // Body element completely read
+	FAILED
 };
 
 /* -------------------------------------------------------------------------------------/
@@ -117,10 +118,6 @@ static struct priv_soap_task* init_task(VRT_CTX)
 
 	soap_task->ctx = ctx;
 
-	TASK_ALLOC_OBJ(ctx, soap_task->req_http, SOAP_REQ_HTTP_MAGIC);
-	if (! soap_task->req_http)
-		return (NULL);
-
 	TASK_ALLOC_OBJ(ctx, soap_task->req_xml, SOAP_REQ_XML_MAGIC);
 	if (! soap_task->req_xml)
 		return (NULL);
@@ -144,12 +141,7 @@ static void clean_task(VRT_CTX, void *priv)
 	clean_req_xml(soap_task->req_xml);
 	INIT_OBJ(soap_task->req_xml, SOAP_REQ_XML_MAGIC);
 
-	clean_req_http(soap_task->req_http);
-	INIT_OBJ(soap_task->req_http, SOAP_REQ_HTTP_MAGIC);
-
 	INIT_OBJ(soap_task->req_xml, SOAP_REQ_XML_MAGIC);
-
-	INIT_OBJ(soap_task->req_http, SOAP_REQ_HTTP_MAGIC);
 
 	AN(soap_task->pool);
 	apr_pool_destroy(soap_task->pool);
@@ -164,98 +156,57 @@ process_init_read(struct priv_soap_task *task)
 	AN(task);
 	assert(task->state == NONE);
 
-	task->req_http->pool = task->pool;
-	task->req_http->ctx = task->ctx;
-	init_req_http(task->req_http);
-	if (task->req_http->encoding != CE_GZIP &&
-	    task->req_http->encoding != CE_NONE) {
-		VSLb(task->ctx->vsl, SLT_Error, "Unsupported Content-Encoding");
-		return (-1);
-	}
-
 	task->req_xml->pool = task->pool;
 	task->req_xml->ctx = task->ctx;
 	init_req_xml(task->req_xml);
 
-	task->bytes_total = http_GetContentLength(task->ctx->http_req);
-	if(task->bytes_total <= 0) {
-		VSLb(task->ctx->vsl, SLT_Error,
-		    "Invalid content-length %ld", task->bytes_total);
-		return (-1);
-	}
 	task->state = INIT;
+	task->vrb_what = VRB_CACHED;
 	return (0);
 }
 
-static int
-process_read(struct priv_soap_task *task)
+int v_matchproto_(objiterate_f)
+read_iter_f(void *priv, unsigned flush, const void *ptr, ssize_t len)
 {
+	struct priv_soap_task *task;
+	int err;
 
-	AN(task);
+	CAST_OBJ_NOTNULL(task, priv, PRIV_SOAP_TASK_MAGIC);
+
+	if (task->state == FAILED)
+		return (0);
+
 	assert(task->state == INIT ||
 	    task->state == HEADER_DONE ||
 	    task->state == ACTION_AVAILABLE);
 
-	if (task->bytes_total <= 0) {
-		VSLb(task->ctx->vsl, SLT_Error, "Not enough data");
-		return (-1);
-	}
-	// If everything is read, but state not switched to BODY_DONE that mean
-	// XML body isn't present in request
-	if (task->bytes_read >= task->bytes_total) {
-		VSLb(task->ctx->vsl, SLT_Error,
-		    "SOAP: http read error: incomplete xml");
-		return (-1);
-	}
-	while (task->bytes_read < task->bytes_total) {
-		int just_read = read_body_part(task->req_http,
-		    task->bytes_read, task->bytes_total);
-		if (just_read <= 0) {
-			VSLb(task->ctx->vsl, SLT_Error,
-			    "SOAP: http read failed (%d, errno: %d)",
-			    just_read, errno);
-			return (-1);
-		}
-		task->bytes_read += just_read;
-		VSLb(task->ctx->vsl, SLT_Debug, "process_request 6: "
-		    "read %d bytes", just_read);
+	err = soap_iter_f(task->req_xml, flush, ptr, len);
 
-		// parse chunk
-		VSLb(task->ctx->vsl, SLT_Debug, "process_request 7: "
-		    "total %d bytes", task->req_http->body.length);
-		if (parse_soap_chunk(task->req_xml, task->req_http->body.data,
-			task->req_http->body.length)) {
-			VSLb(task->ctx->vsl, SLT_Error,
-			    "SOAP: soap read failed %d", errno);
-			return (-1);
-		}
+	// we never fail the iterator for custom error handling from vcl
+	if (err < 0)
+		task->state = FAILED;
+	else if (task->req_xml->body)
+		task->state = BODY_DONE;
+	else if (task->req_xml->action_namespace && task->req_xml->action_name)
+		task->state = ACTION_AVAILABLE;
+	else if (task->req_xml->header)
+		task->state = HEADER_DONE;
 
-		if (task->req_xml->body) {
-			task->state = BODY_DONE;
-			break;
-		}
-		if (task->req_xml->action_namespace &&
-		    task->req_xml->action_name) {
-			task->state = ACTION_AVAILABLE;
-			break;
-		}
-		if (task->req_xml->header) {
-			task->state = HEADER_DONE;
-			break;
-		}
-	}
 	return (0);
 }
 
 int process_request(struct priv_soap_task *task, enum soap_state state)
 {
+	enum soap_state old;
 	int r;
 
-	VSLb(task->ctx->vsl, SLT_Debug, "process_request 0: %d/%d", task->state, state);
+	if (task->ctx->req->req_body_status == BS_NONE)
+		return (-1);
 	while (task->state < state) {
-		VSLb(task->ctx->vsl, SLT_Debug, "process_request: %d/%d (%ld bytes)",
-		    task->state, state, task->bytes_total);
-		switch (task->state) {
+		old = task->state;
+		VSLb(task->ctx->vsl, SLT_Debug,
+		    "process_request 0: %d/%d", old, state);
+		switch (old) {
 		case NONE:  // init
 			r = process_init_read(task);
 			if (r)
@@ -264,19 +215,31 @@ int process_request(struct priv_soap_task *task, enum soap_state state)
 		case INIT:
 		case HEADER_DONE:
 		case ACTION_AVAILABLE:
-			r = process_read(task);
-			if (r)
+			r = VRB_Iterate(task->ctx->req->wrk, task->ctx->vsl,
+			    task->ctx->req, read_iter_f, task, task->vrb_what);
+			if (task->vrb_what == VRB_CACHED) {
+				task->vrb_what = VRB_REMAIN;
+				continue;
+			}
+			/* error or no progress */
+			if (r == 0 && old == task->state)
+				r = -1;
+			if (r) {
+				task->state = FAILED;
 				return (r);
+			}
 			break;
 		case BODY_DONE:  // read from memory
-			VSLb(task->ctx->vsl, SLT_Debug, "process_request 8: %d/%d", task->state, state);
+			VSLb(task->ctx->vsl, SLT_Debug, "process_request 8: %d/%d", old, state);
+			break;
+		case FAILED:
 			break;
 		default:
 			WRONG("task->state");
 		}
 	}
 	VSLb(task->ctx->vsl, SLT_Debug, "process_request .: %d/%d", task->state, state);
-	return (0);
+	return (task->state == FAILED);
 }
 
 static const struct vmod_priv_methods priv_soap_vcl_methods[1] = {{
@@ -348,9 +311,6 @@ sess_record* priv_soap_get(VRT_CTX, struct vmod_priv *priv /* PRIV_TASK */)
 	CAST_OBJ_NOTNULL(soap_task, priv->priv, PRIV_SOAP_TASK_MAGIC);
 	if(soap_task->ctx != ctx) {
 		soap_task->ctx = ctx;
-		if(soap_task->req_http) {
-			soap_task->req_http->ctx = ctx;
-		}
 		if(soap_task->req_xml) {
 			soap_task->req_xml->ctx = ctx;
 		}
@@ -517,8 +477,8 @@ enum soap_source {
 struct VPFX(soap_parser) {
 	unsigned			magic;
 #define SOAP_PARSER_MAGIC		0x017ce81e
+	unsigned			can_VRB_REMAIN:1;
 	enum soap_source		source;
-	enum vrb_what_e			vrb_what;
 	char				*vcl_name;
 	VSLIST_HEAD(, soap_namespace)	namespaces;
 };
@@ -549,12 +509,7 @@ vmod_parser__init(VRT_CTX, struct VPFX(soap_parser) **soapp,
 			vmod_parser__fini(&soap);
 			return;
 		}
-		if (args->req_body == VENUM(all))
-			soap->vrb_what = VRB_ALL;
-		else if (args->req_body == VENUM(cached))
-			soap->vrb_what = VRB_CACHED;
-		else
-			WRONG("req_body argument");
+		soap->can_VRB_REMAIN = (args->req_body == VENUM(all));
 	} else if (args->source == VENUM(resp_body)) {
 		soap->source = SOAPS_RESP_BODY;
 	} else {

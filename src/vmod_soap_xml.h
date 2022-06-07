@@ -68,7 +68,8 @@ void clean_xml();
 void init_req_xml(struct soap_req_xml *req_xml);
 void clean_req_xml(struct soap_req_xml *req_xml);
 
-int parse_soap_chunk(struct soap_req_xml *soap_req_xml, const char *data, int length);
+int v_matchproto_(objiterate_f)
+soap_iter_f(void *priv, unsigned flush, const void *ptr, ssize_t len);
 int test_ns(VCL_STRING prefix, VCL_STRING uri);
 const char* evaluate_xpath(struct priv_soap_vcl *soap_vcl, struct priv_soap_task *soap_task, xmlNodePtr node, const char* xpath);
 

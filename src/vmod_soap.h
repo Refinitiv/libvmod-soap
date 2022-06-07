@@ -40,8 +40,6 @@
 
 #include <stdio.h>
 
-#include "vmod_soap_http.h"
-
 #define HANDLER_ERROR -1
 #define HANDLER_SUCCESS_NOT_MODIFIED 0
 #define HANDLER_SUCCESS_MODIFIED 1
@@ -72,15 +70,11 @@ typedef struct priv_soap_task {
 #define PRIV_SOAP_TASK_MAGIC 0x5FF52A40
 	VRT_CTX;
 	apr_pool_t			*pool;
-	struct soap_req_http		*req_http;
 	struct soap_req_xml		*req_xml;
 	int				state;
-	ssize_t				bytes_read;
-	ssize_t				bytes_total;
+	enum vrb_what_e		vrb_what;
 } sess_record;
 
-#include "vmod_soap_request.h"
-#include "vmod_soap_gzip.h"
 #include "vmod_soap_xml.h"
 
 #endif

@@ -1,25 +1,23 @@
 varnishtest "SOAP: req body is not in XML format."
 
-server s1 {
-        rxreq
-        expect req.http.soap-ws-ns == "http://schemas.reuters.com/mytest"
-        expect req.http.content-length == 198
-        txresp -status 200
-} -start
-
-varnish v1 -vcl+backend {
+varnish v1 -vcl {
     import ${vmod_soap};
+    import std;
+
+    backend foo none;
 
     sub vcl_recv
     {
+            # cache just enough to determine if xml
+            std.cache_req_body(10B, partial=true);
             if(soap.is_valid()) {
                     set req.http.soap-ws-ns = soap.action_namespace();
+                    return (synth(200));
             }
             else {
                     return (synth(400, "Wrong SOAP message"));
             }
     }
-    
 } -start
 
 client c1 {

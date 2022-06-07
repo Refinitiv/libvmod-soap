@@ -8,6 +8,7 @@ server s1 {
 
 varnish v1 -vcl+backend {
     import ${vmod_soap};
+    import std;
 
     sub vcl_init
     {
@@ -17,6 +18,7 @@ varnish v1 -vcl+backend {
 
     sub vcl_recv
     {
+            std.cache_req_body(1K);
             set req.http.soap-uuid = soap.xpath_header("ui:userIdentity/uuid:UUID");
             if(!req.http.soap-uuid || req.http.soap-uuid == "") {
                     return (synth(400, "SOAP UUID is mandatory"));

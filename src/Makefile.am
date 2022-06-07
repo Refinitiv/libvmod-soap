@@ -14,10 +14,7 @@ vmod_LTLIBRARIES = libvmod_soap.la
 
 libvmod_soap_la_SOURCES = \
 	vmod_soap.c \
-	vmod_soap_http.c \
-	vmod_soap_gzip.c \
-	vmod_soap_xml.c \
-	vmod_soap_request.c
+	vmod_soap_xml.c
 
 nodist_libvmod_soap_la_SOURCES = \
 	vcc_soap_if.c \
