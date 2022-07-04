@@ -195,7 +195,8 @@ read_iter_f(void *priv, unsigned flush, const void *ptr, ssize_t len)
 	return (0);
 }
 
-int process_request(struct priv_soap_task *task, enum soap_state state)
+int process_request(struct priv_soap_task *task, enum soap_state state,
+    unsigned can_eat)
 {
 	enum soap_state old;
 	int r;
@@ -217,7 +218,7 @@ int process_request(struct priv_soap_task *task, enum soap_state state)
 		case ACTION_AVAILABLE:
 			r = VRB_Iterate(task->ctx->req->wrk, task->ctx->vsl,
 			    task->ctx->req, read_iter_f, task, task->vrb_what);
-			if (task->vrb_what == VRB_CACHED) {
+			if (task->vrb_what == VRB_CACHED && can_eat) {
 				task->vrb_what = VRB_REMAIN;
 				continue;
 			}
@@ -323,14 +324,14 @@ VCL_BOOL v_matchproto_(td_soap_is_valid)
 {
 	struct priv_soap_task *soap_task = priv_soap_get(ctx, priv);
 
-	return (process_request(soap_task, ACTION_AVAILABLE) == 0);
+	return (process_request(soap_task, ACTION_AVAILABLE, 1) == 0);
 }
 
 VCL_STRING v_matchproto_(td_soap_action)
 	vmod_action(VRT_CTX, struct vmod_priv *priv /* PRIV_TASK */)
 {
 	struct priv_soap_task *soap_task = priv_soap_get(ctx, priv);
-	if(process_request(soap_task, ACTION_AVAILABLE) == 0) {
+	if(process_request(soap_task, ACTION_AVAILABLE, 1) == 0) {
 		return (soap_task->req_xml->action_name);
 	}
 	return ("");
@@ -340,7 +341,7 @@ VCL_STRING v_matchproto_(td_soap_action_namespace)
 	vmod_action_namespace(VRT_CTX, struct vmod_priv *priv /* PRIV_TASK */)
 {
 	struct priv_soap_task *soap_task = priv_soap_get(ctx, priv);
-	if(process_request(soap_task, ACTION_AVAILABLE) == 0) {
+	if(process_request(soap_task, ACTION_AVAILABLE, 1) == 0) {
 		return (soap_task->req_xml->action_namespace);
 	}
 	return ("");
@@ -374,7 +375,7 @@ VCL_STRING v_matchproto_(td_soap_xpath_header)
 	AN(priv_task);
 	soap_task = priv_soap_get(ctx, priv_task);
 
-	if(process_request(soap_task, HEADER_DONE) == 0) {
+	if(process_request(soap_task, HEADER_DONE, 1) == 0) {
 		return (evaluate_xpath(soap_vcl, soap_task, soap_task->req_xml->header, xpath));
 	}
 	return ("");
@@ -392,7 +393,7 @@ VCL_STRING v_matchproto_(td_soap_xpath_body)
 	AN(priv_task);
 	soap_task = priv_soap_get(ctx, priv_task);
 
-	if(process_request(soap_task, BODY_DONE) == 0) {
+	if(process_request(soap_task, BODY_DONE, 1) == 0) {
 		return (evaluate_xpath(soap_vcl, soap_task, soap_task->req_xml->body, xpath));
 	}
 	return ("");
