@@ -12,6 +12,7 @@ server s1 {
 
 varnish v1 -vcl+backend {
     import ${vmod_soap};
+    import std;
 
     sub vcl_init
     {
@@ -21,6 +22,7 @@ varnish v1 -vcl+backend {
 
     sub vcl_recv
     {
+            std.cache_req_body(1K);
             if(req.url == "/header") {
                     set req.http.soap-uuid = soap.xpath_header("ui:userIdentity/uuid:UUID");
             }

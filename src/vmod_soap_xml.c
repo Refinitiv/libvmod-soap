@@ -25,10 +25,13 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "config.h"
+
+#include "cache/cache.h"
 #include "vmod_soap.h"
+#include "vcc_soap_if.h"
+
 #include "vmod_soap_xml.h"
-#include "vmod_soap_http.h"
-#include "vmod_soap_request.h"
 #include <libxml/xpath.h>
 #include <libxml/xpathInternals.h>
 
@@ -73,6 +76,25 @@ void add_soap_error(struct soap_req_xml *req_xml, int status, const char* fmt, .
 	va_end(args);
 }
 
+/* test-register a namespace */
+int
+test_ns(VCL_STRING prefix, VCL_STRING uri)
+{
+	xmlDocPtr doc;
+	xmlXPathContextPtr xpathCtx;
+	int r;
+
+	doc = xmlNewDoc(XMLSTR("1.0"));
+	XXXAN(doc);
+	xpathCtx = xmlXPathNewContext(doc);
+	XXXAN(xpathCtx);
+	r = xmlXPathRegisterNs(xpathCtx, XMLSTR(prefix), XMLSTR(uri));
+	xmlXPathFreeContext(xpathCtx);
+	xmlFreeDoc(doc);
+
+	return (r);
+}
+
 /* -------------------------------------------------------------------------------------/
    Runs XPath expression against single xml node
 */
@@ -109,7 +131,7 @@ const char* evaluate_xpath(struct priv_soap_vcl *soap_vcl, struct priv_soap_task
 		if( xpathObj->nodesetval->nodeTab[i]->children &&
 		    xpathObj->nodesetval->nodeTab[i]->children->content ) {
 			// Save free pointer to reset workspace in case of overflow
-			void *f = soap_task->ctx->ws->f;
+			intptr_t f = WS_Snapshot(soap_task->ctx->ws);
 			char *res = WS_Copy(soap_task->ctx->ws, xpathObj->nodesetval->nodeTab[i]->children->content, -1);
 			xmlXPathFreeContext(xpathCtx);
 			xmlXPathFreeObject(xpathObj);
@@ -324,18 +346,24 @@ void synth_soap_fault(struct soap_req_xml *req_xml, int code, const char* messag
 	doc = xmlNewDoc(XMLSTR("1.0"));
 	create_soap_fault(doc, req_xml->error_info);
 	xmlDocDumpMemory(doc, &content, &length);
-	VRT_synth_page(req_xml->ctx, (const char*)content, vrt_magic_string_end);
+	VRT_synth_page(req_xml->ctx, TOSTRAND((const char*)content));
 	VRT_SetHdr(req_xml->ctx, &VGC_HDR_RESP_Content_2d_Type,
-	    "application/soap+xml; charset=utf-8",
-	    vrt_magic_string_end
-	);
+	    "application/soap+xml; charset=utf-8", NULL);
 	xmlFree(content);
 	xmlFreeDoc(doc);
 }
 
-int parse_soap_chunk(struct soap_req_xml *soap_req_xml, const char *data, int length)
+int v_matchproto_(objiterate_f)
+soap_iter_f(void *priv, unsigned flush, const void *ptr, ssize_t len)
 {
-	int err = xmlParseChunk(soap_req_xml->parser, data, length, 0);
+	struct soap_req_xml *soap_req_xml;
+	int err;
+
+	CAST_OBJ_NOTNULL(soap_req_xml, priv, SOAP_REQ_XML_MAGIC);
+	(void) flush;
+	AN(ptr);
+
+	err = xmlParseChunk(soap_req_xml->parser, ptr, len, 0);
 
 	// real error occured
 	if (soap_req_xml->error || (err && !soap_req_xml->stop))

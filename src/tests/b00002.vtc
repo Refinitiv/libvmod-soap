@@ -16,9 +16,11 @@ server s1 {
 
 varnish v1 -vcl+backend {
     import ${vmod_soap};
+    import std;
 
     sub vcl_recv
     {
+            std.cache_req_body(1K);
             set req.http.soap-action = soap.action();
             set req.http.soap-action-ns = soap.action_namespace();
     }

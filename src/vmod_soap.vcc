@@ -25,7 +25,8 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
-$Module soap 3 Soap VMOD
+$Module soap 3 "Soap VMOD"
+$ABI strict
 
 DESCRIPTION
 ===========
@@ -69,6 +70,39 @@ It uses the namespace table (see `add_namespace`).
 
 $Function VOID synthetic(PRIV_TASK, INT, STRING)
 
-Create a SOAP synthetic response's body containing SOAP FaultCode and 
+Create a SOAP synthetic response's body containing SOAP FaultCode and
 FaultMessage. Note that FaultMessage will contain any internal errors found.
 Format of the response depends of the SOAP version of the request (1.1 or 1.2).
+
+$Object parser(ENUM {req_body, resp_body} source,
+	[ENUM {cached, all} req_body])
+
+Create a soap parser object on the given source.
+
+For ``source=req_body``, the ``req_body`` argument also needs to be
+specified to define whether the parser is allowed to read ``all`` of
+the requets body (potentially making it unavailable to the backend
+request and other consumers) or if it is limited to the ``cached``
+portion.
+
+.. XXX run own filter chain?
+
+For ``source=resp_body``, the object in cache must be uncompressed, so
+``set beresp.do_gunzip = true`` should be used on the backend side.
+
+Multiple instances on the same *source* can be instantiated to parse
+multiple reponse bodies across restarts.
+
+$Method VOID .add_namespace(STRING prefix, STRING uri)
+
+Define namespace *prefix* from *uri* for the parser instance.
+
+Can only be called from ``vcl_init {}``.
+
+$Method STRING .header_xpath(STRING)
+
+Return an xpath value from the SOAP header.
+
+$Method STRING .body_xpath(STRING)
+
+Return an xpath value from the SOAP body.

@@ -8,9 +8,11 @@ server s1 {
 
 varnish v1 -vcl+backend {
     import ${vmod_soap};
+    import std;
 
     sub vcl_recv
     {
+            std.cache_req_body(1K);
             if(soap.is_valid()) {
                     return (synth(800, "SOAP is devil"));
             }

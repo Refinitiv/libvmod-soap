@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2019, Refinitiv
+ * Copyright 2022 UPLEX - Nils Goroll Systemoptimierung
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,13 +26,25 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "config.h"
+
+#include <cache/cache.h>
+#include <vcl.h>
+#include <vsb.h>
+
 #include "vmod_soap.h"
+#include "vcc_soap_if.h"
 
 #define POOL_KEY "VRN_IH_PK"
 
-static pthread_mutex_t	soap_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int		refcount = 0;
 static apr_pool_t	*apr_pool = NULL;
+
+enum soap_source {
+	SOAPS_INVALID = 0,
+	SOAPS_REQ_BODY,
+	SOAPS_RESP_BODY
+};
 
 enum soap_state {
 	NONE = 0,
@@ -39,7 +52,7 @@ enum soap_state {
 	HEADER_DONE,      // Header element completely read
 	ACTION_AVAILABLE, // Body parsing is started and action name and namespace available
 	BODY_DONE,        // Body element completely read
-	DONE
+	FAILED
 };
 
 /* -------------------------------------------------------------------------------------/
@@ -61,11 +74,12 @@ static void clean_apr()
 /* -------------------------------------------------------------------------------------/
    init vcl
 */
-static void clean_vcl(void *priv)
+static void clean_vcl(VRT_CTX, void *priv)
 {
 	struct priv_soap_vcl *priv_soap_vcl;
 	struct soap_namespace *ns, *ns2;
 
+	CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
 	CAST_OBJ_NOTNULL(priv_soap_vcl, priv, PRIV_SOAP_VCL_MAGIC);
 
 	VSLIST_FOREACH_SAFE(ns, &priv_soap_vcl->namespaces, list, ns2) {
@@ -90,22 +104,31 @@ static struct priv_soap_vcl* init_vcl()
 /* ------------------------------------------------------------------/
    initialize session
 */
+
+#define TASK_ALLOC_OBJ(ctx, ptr, magic) do {			\
+	assert(sizeof *(ptr) <= UINT_MAX);			\
+	ptr = WS_Alloc((ctx)->ws, sizeof *(ptr));		\
+	if ((ptr) == NULL)					\
+		VRT_fail(ctx, "Out of workspace for " #magic);	\
+	else							\
+		INIT_OBJ(ptr, magic);				\
+} while(0)
+
 static struct priv_soap_task* init_task(VRT_CTX)
 {
 	struct priv_soap_task *soap_task;
 
-	ALLOC_OBJ(soap_task, PRIV_SOAP_TASK_MAGIC);
-	AN(soap_task);
+	TASK_ALLOC_OBJ(ctx, soap_task, PRIV_SOAP_TASK_MAGIC);
+	if (! soap_task)
+		return (NULL);
 
 	soap_task->ctx = ctx;
 
+	TASK_ALLOC_OBJ(ctx, soap_task->req_xml, SOAP_REQ_XML_MAGIC);
+	if (! soap_task->req_xml)
+		return (NULL);
+
 	XXXAZ(apr_pool_create(&soap_task->pool, apr_pool));
-
-	ALLOC_OBJ(soap_task->req_http, SOAP_REQ_HTTP_MAGIC);
-	XXXAN(soap_task->req_http);
-
-	ALLOC_OBJ(soap_task->req_xml, SOAP_REQ_XML_MAGIC);
-	XXXAN(soap_task->req_xml);
 
 	VSLb(soap_task->ctx->vsl, SLT_Debug, "init_task");
 	return soap_task;
@@ -114,123 +137,147 @@ static struct priv_soap_task* init_task(VRT_CTX)
 /* -----------------------------------------------------------------/
    destroy session
 */
-static void clean_task(void *priv)
+static void clean_task(VRT_CTX, void *priv)
 {
 	struct priv_soap_task *soap_task;
 
-	AN(priv);
+	CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
 	CAST_OBJ_NOTNULL(soap_task, priv, PRIV_SOAP_TASK_MAGIC);
 
 	clean_req_xml(soap_task->req_xml);
 	INIT_OBJ(soap_task->req_xml, SOAP_REQ_XML_MAGIC);
 
-	clean_req_http(soap_task->req_http);
-	INIT_OBJ(soap_task->req_http, SOAP_REQ_HTTP_MAGIC);
-
 	INIT_OBJ(soap_task->req_xml, SOAP_REQ_XML_MAGIC);
-	FREE_OBJ(soap_task->req_xml);
-
-	INIT_OBJ(soap_task->req_http, SOAP_REQ_HTTP_MAGIC);
-	FREE_OBJ(soap_task->req_http);
 
 	AN(soap_task->pool);
 	apr_pool_destroy(soap_task->pool);
 
 	INIT_OBJ(soap_task, PRIV_SOAP_TASK_MAGIC);
-	FREE_OBJ(soap_task);
 }
 
-int process_request(struct priv_soap_task *task, enum soap_state state)
+static int
+process_init_read(struct priv_soap_task *task)
 {
-	VSLb(task->ctx->vsl, SLT_Debug, "process_request 0: %d/%d", task->state, state);
-	ssize_t bytes_read = 0;
+
+	AN(task);
+	assert(task->state == NONE);
+
+	task->req_xml->pool = task->pool;
+	task->req_xml->ctx = task->ctx;
+	init_req_xml(task->req_xml);
+
+	task->state = INIT;
+	task->vrb_what = VRB_CACHED;
+	return (0);
+}
+
+int v_matchproto_(objiterate_f)
+read_iter_f(void *priv, unsigned flush, const void *ptr, ssize_t len)
+{
+	struct priv_soap_task *task;
+	int err;
+
+	CAST_OBJ_NOTNULL(task, priv, PRIV_SOAP_TASK_MAGIC);
+
+	if (task->state == FAILED || task->state == BODY_DONE)
+		return (0);
+
+	assert(task->state == INIT ||
+	    task->state == HEADER_DONE ||
+	    task->state == ACTION_AVAILABLE);
+
+	err = soap_iter_f(task->req_xml, flush, ptr, len);
+
+	// we never fail the iterator for custom error handling from vcl
+	if (err < 0)
+		task->state = FAILED;
+	else if (task->req_xml->body)
+		task->state = BODY_DONE;
+	else if (task->req_xml->action_namespace && task->req_xml->action_name)
+		task->state = ACTION_AVAILABLE;
+	else if (task->req_xml->header)
+		task->state = HEADER_DONE;
+
+	return (0);
+}
+
+int process_request(struct priv_soap_task *task, enum soap_state state,
+    enum soap_source source, unsigned can_eat)
+{
+	enum soap_state old;
+	int r;
+
+	if (source == SOAPS_REQ_BODY &&
+	    task->ctx->req->req_body_status == BS_NONE)
+		return (-1);
 	while (task->state < state) {
-		switch (task->state) {
+		old = task->state;
+		VSLb(task->ctx->vsl, SLT_Debug,
+		    "process_request 0: %d/%d", old, state);
+		switch (old) {
 		case NONE:  // init
-			VSLb(task->ctx->vsl, SLT_Debug, "process_request 1: %d/%d", task->state, state);
-			task->req_http->pool = task->pool;
-			task->req_http->ctx = task->ctx;
-			init_req_http(task->req_http);
-			if (task->req_http->encoding != CE_GZIP && task->req_http->encoding != CE_NONE) {
-				VSLb(task->ctx->vsl, SLT_Error, "Unsupported Content-Encoding");
-				return (-1);
-			}
-
-			task->req_xml->pool = task->pool;
-			task->req_xml->ctx = task->ctx;
-			init_req_xml(task->req_xml);
-
-			task->bytes_total = http_GetContentLength(task->ctx->http_req);
-			if(task->bytes_total <= 0) {
-				VSLb(task->ctx->vsl, SLT_Error, "Invalid content-length %ld", task->bytes_total);
-				return (-1);
-			}
-			task->state = INIT;
+			r = process_init_read(task);
+			if (r)
+				return (r);
 			break;
 		case INIT:
 		case HEADER_DONE:
 		case ACTION_AVAILABLE:
-			VSLb(task->ctx->vsl, SLT_Debug, "process_request 5: %d/%d (%ld bytes)", task->state, state, task->bytes_total);
-			if (task->bytes_total <= 0) {
-				VSLb(task->ctx->vsl, SLT_Error, "Not enough data");
-				return (-1);
+			if (source == SOAPS_REQ_BODY) {
+				r = VRB_Iterate(task->ctx->req->wrk, task->ctx->vsl,
+				    task->ctx->req, read_iter_f, task, task->vrb_what);
+			} else {
+				assert(source == SOAPS_RESP_BODY);
+				if (task->ctx->req != NULL &&
+				    task->ctx->req->objcore != NULL) {
+					r = ObjIterate(task->ctx->req->wrk,
+					    task->ctx->req->objcore,
+					    task, read_iter_f, 0);
+				} else {
+					VSLb(task->ctx->vsl, SLT_Debug,
+					    "no objcore");
+					r = -1;
+				}
 			}
-			// If everything is read, but state not switched to BODY_DONE that mean
-			// XML body isn't present in request
-			if (bytes_read >= task->bytes_total) {
-				VSLb(task->ctx->vsl, SLT_Error, "SOAP: http read error: incomplete xml");
-				return (-1);
+			if (task->vrb_what == VRB_CACHED && can_eat) {
+				task->vrb_what = VRB_REMAIN;
+				continue;
 			}
-			while (bytes_read < task->bytes_total) {
-				int just_read = read_body_part(task->req_http, bytes_read, task->bytes_total);
-				if (just_read <= 0) {
-					VSLb(task->ctx->vsl, SLT_Error, "SOAP: http read failed (%d, errno: %d)", just_read, errno);
-					return (-1);
-				}
-				bytes_read += just_read;
-				VSLb(task->ctx->vsl, SLT_Debug, "process_request 6: read %d bytes", just_read);
-
-				// parse chunk
-				VSLb(task->ctx->vsl, SLT_Debug, "process_request 7: tota %d bytes", task->req_http->body.length);
-				if (parse_soap_chunk(task->req_xml, task->req_http->body.data, task->req_http->body.length)) {
-					VSLb(task->ctx->vsl, SLT_Error, "SOAP: soap read failed %d", errno);
-					return (-1);
-				}
-
-				if (task->req_xml->body) {
-					task->state = BODY_DONE;
-					break;
-				}
-				if (task->req_xml->action_namespace && task->req_xml->action_name) {
-					task->state = ACTION_AVAILABLE;
-					break;
-				}
-				if (task->req_xml->header) {
-					task->state = HEADER_DONE;
-					break;
-				}
+			/* error or no progress */
+			if (r == 0 && old == task->state)
+				r = -1;
+			if (r) {
+				task->state = FAILED;
+				return (r);
 			}
 			break;
 		case BODY_DONE:  // read from memory
-		case DONE:
-			VSLb(task->ctx->vsl, SLT_Debug, "process_request 8: %d/%d", task->state, state);
+			VSLb(task->ctx->vsl, SLT_Debug, "process_request 8: %d/%d", old, state);
+			break;
+		case FAILED:
 			break;
 		default:
-			VSLb(task->ctx->vsl, SLT_Debug, "process_request 9: %d/%d", task->state, state);
-			break;
+			WRONG("task->state");
 		}
 	}
 	VSLb(task->ctx->vsl, SLT_Debug, "process_request .: %d/%d", task->state, state);
-	return (0);
+	return (task->state == FAILED);
 }
+
+static const struct vmod_priv_methods priv_soap_vcl_methods[1] = {{
+	.magic = VMOD_PRIV_METHODS_MAGIC,
+	.type = "soap priv_vcl",
+	.fini = clean_vcl
+}};
 
 /*
  * handle vmod internal state, vmod init/fini and/or varnish callback
  * (un)registration here.
  *
  */
-int __match_proto__(vmod_event_f)
-	event_function(VRT_CTX, struct vmod_priv *priv /* PRIV_VCL */, enum vcl_event_e e)
+int v_matchproto_(vmod_event_f)
+	VPFX(event_function)(VRT_CTX, struct vmod_priv *priv /* PRIV_VCL */,
+	    enum vcl_event_e e)
 {
 	struct priv_soap_vcl *priv_soap_vcl;
 
@@ -238,34 +285,40 @@ int __match_proto__(vmod_event_f)
 
 	switch (e) {
 	case VCL_EVENT_LOAD:
-		AZ(pthread_mutex_lock(&soap_mutex));
+		if (! xmlHasFeature(XML_WITH_THREAD)) {
+			VRT_fail(ctx, "Need libxml2 with threads support");
+			return (1);
+		}
 		if(0 == refcount++) {
 			init_xml();
 			init_apr();
 		}
-		AZ(pthread_mutex_unlock(&soap_mutex));
 
 		priv_soap_vcl = init_vcl();
 		priv->priv = priv_soap_vcl;
-		priv->free = clean_vcl;
+		priv->methods = priv_soap_vcl_methods;
 		break;
 	case VCL_EVENT_WARM:
 		break;
 	case VCL_EVENT_COLD:
 		break;
 	case VCL_EVENT_DISCARD:
-		AZ(pthread_mutex_lock(&soap_mutex));
 		if(0 == --refcount) {
 			clean_xml();
 			clean_apr();
 		}
-		AZ(pthread_mutex_unlock(&soap_mutex));
 		break;
 	default:
 		return (0);
 	}
 	return (0);
 }
+
+static const struct vmod_priv_methods priv_soap_task_methods[1] = {{
+	.magic = VMOD_PRIV_METHODS_MAGIC,
+	.type = "soap priv_task",
+	.fini = clean_task
+}};
 
 sess_record* priv_soap_get(VRT_CTX, struct vmod_priv *priv /* PRIV_TASK */)
 {
@@ -275,14 +328,11 @@ sess_record* priv_soap_get(VRT_CTX, struct vmod_priv *priv /* PRIV_TASK */)
 	AN(priv);
 	if(priv->priv == NULL) {
 		priv->priv = init_task(ctx);
-		priv->free = clean_task;
+		priv->methods = priv_soap_task_methods;
 	}
 	CAST_OBJ_NOTNULL(soap_task, priv->priv, PRIV_SOAP_TASK_MAGIC);
 	if(soap_task->ctx != ctx) {
 		soap_task->ctx = ctx;
-		if(soap_task->req_http) {
-			soap_task->req_http->ctx = ctx;
-		}
 		if(soap_task->req_xml) {
 			soap_task->req_xml->ctx = ctx;
 		}
@@ -290,35 +340,35 @@ sess_record* priv_soap_get(VRT_CTX, struct vmod_priv *priv /* PRIV_TASK */)
 	return (soap_task);
 }
 
-VCL_BOOL __match_proto__(td_soap_is_valid)
+VCL_BOOL v_matchproto_(td_soap_is_valid)
 	vmod_is_valid(VRT_CTX, struct vmod_priv *priv /* PRIV_TASK */)
 {
 	struct priv_soap_task *soap_task = priv_soap_get(ctx, priv);
 
-	return (process_request(soap_task, ACTION_AVAILABLE) == 0);
+	return (process_request(soap_task, ACTION_AVAILABLE, SOAPS_REQ_BODY, 1) == 0);
 }
 
-VCL_STRING __match_proto__(td_soap_action)
+VCL_STRING v_matchproto_(td_soap_action)
 	vmod_action(VRT_CTX, struct vmod_priv *priv /* PRIV_TASK */)
 {
 	struct priv_soap_task *soap_task = priv_soap_get(ctx, priv);
-	if(process_request(soap_task, ACTION_AVAILABLE) == 0) {
+	if(process_request(soap_task, ACTION_AVAILABLE, SOAPS_REQ_BODY, 1) == 0) {
 		return (soap_task->req_xml->action_name);
 	}
 	return ("");
 }
 
-VCL_STRING __match_proto__(td_soap_action_namespace)
+VCL_STRING v_matchproto_(td_soap_action_namespace)
 	vmod_action_namespace(VRT_CTX, struct vmod_priv *priv /* PRIV_TASK */)
 {
 	struct priv_soap_task *soap_task = priv_soap_get(ctx, priv);
-	if(process_request(soap_task, ACTION_AVAILABLE) == 0) {
+	if(process_request(soap_task, ACTION_AVAILABLE, SOAPS_REQ_BODY, 1) == 0) {
 		return (soap_task->req_xml->action_namespace);
 	}
 	return ("");
 }
 
-VCL_VOID __match_proto__(td_soap_add_namespace)
+VCL_VOID v_matchproto_(td_soap_add_namespace)
 	vmod_add_namespace(VRT_CTX, struct vmod_priv *priv /* PRIV_VCL */, VCL_STRING prefix, VCL_STRING uri)
 {
 	struct priv_soap_vcl	    *priv_soap_vcl;
@@ -334,7 +384,7 @@ VCL_VOID __match_proto__(td_soap_add_namespace)
 	VSLIST_INSERT_HEAD(&priv_soap_vcl->namespaces, namespace, list);
 }
 
-VCL_STRING __match_proto__(td_soap_xpath_header)
+VCL_STRING v_matchproto_(td_soap_xpath_header)
 	vmod_xpath_header(VRT_CTX, struct vmod_priv *priv_vcl /* PRIV_VCL */, struct vmod_priv *priv_task /* PRIV_TASK */, VCL_STRING xpath)
 {
 	struct priv_soap_vcl *soap_vcl;;
@@ -346,13 +396,13 @@ VCL_STRING __match_proto__(td_soap_xpath_header)
 	AN(priv_task);
 	soap_task = priv_soap_get(ctx, priv_task);
 
-	if(process_request(soap_task, HEADER_DONE) == 0) {
+	if(process_request(soap_task, HEADER_DONE, SOAPS_REQ_BODY, 1) == 0) {
 		return (evaluate_xpath(soap_vcl, soap_task, soap_task->req_xml->header, xpath));
 	}
 	return ("");
 }
 
-VCL_STRING __match_proto__(td_soap_xpath_body)
+VCL_STRING v_matchproto_(td_soap_xpath_body)
 	vmod_xpath_body(VRT_CTX, struct vmod_priv *priv_vcl /* PRIV_VCL */, struct vmod_priv *priv_task /* PRIV_TASK */, VCL_STRING xpath)
 {
 	struct priv_soap_vcl *soap_vcl;;
@@ -364,13 +414,13 @@ VCL_STRING __match_proto__(td_soap_xpath_body)
 	AN(priv_task);
 	soap_task = priv_soap_get(ctx, priv_task);
 
-	if(process_request(soap_task, BODY_DONE) == 0) {
+	if(process_request(soap_task, BODY_DONE, SOAPS_REQ_BODY, 1) == 0) {
 		return (evaluate_xpath(soap_vcl, soap_task, soap_task->req_xml->body, xpath));
 	}
 	return ("");
 }
 
-VCL_VOID __match_proto__(td_soap_synthetic)
+VCL_VOID v_matchproto_(td_soap_synthetic)
 	vmod_synthetic(VRT_CTX, struct vmod_priv *priv_task /* PRIV_TASK */, VCL_INT soap_code, VCL_STRING soap_message)
 {
 	struct priv_soap_task *soap_task;
@@ -379,4 +429,226 @@ VCL_VOID __match_proto__(td_soap_synthetic)
 	soap_task = priv_soap_get(ctx, priv_task);
 
 	synth_soap_fault(soap_task->req_xml, soap_code, soap_message);
+}
+
+/*
+ * ============================================================
+ *
+ * Object Interface (rework)
+ */
+
+static void
+soap_vsl_generic_error(void *priv, const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	VSLbv(priv, SLT_Error, fmt, ap);
+	va_end(ap);
+}
+
+static void
+soap_vsl_structured_error(void *priv, xmlErrorPtr error)
+{
+
+	AN(error);
+	VSLb(priv, SLT_Error, "xml: domain=%d, code=%d, msg=%s",
+	    error->domain, error->code, error->message);
+}
+
+static void
+soap_vsb_generic_error(void *priv, const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	VSB_vprintf(priv, fmt, ap);
+	va_end(ap);
+}
+
+static void
+soap_vsb_structured_error(void *priv, xmlErrorPtr error)
+{
+
+	AN(error);
+	VSB_printf(priv, "xml: domain=%d, code=%d, msg=%s",
+	    error->domain, error->code, error->message);
+}
+
+static void
+soap_init_thread(VRT_CTX)
+{
+
+	CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
+	if (ctx->vsl != NULL) {
+		xmlSetGenericErrorFunc(ctx->vsl, soap_vsl_generic_error);
+		xmlSetStructuredErrorFunc(ctx->vsl, soap_vsl_structured_error);
+	} else {
+		AN(ctx->msg);
+		xmlSetGenericErrorFunc(ctx->msg, soap_vsb_generic_error);
+		xmlSetStructuredErrorFunc(ctx->msg, soap_vsb_structured_error);
+	}
+}
+
+struct VPFX(soap_parser) {
+	unsigned			magic;
+#define SOAP_PARSER_MAGIC		0x017ce81e
+	unsigned			can_VRB_REMAIN:1;
+	enum soap_source		source;
+	char				*vcl_name;
+	// XXX basically just namespaces
+	struct priv_soap_vcl		priv;
+};
+
+VCL_VOID
+vmod_parser__init(VRT_CTX, struct VPFX(soap_parser) **soapp,
+    const char *vcl_name, struct VARGS(parser__init)*args)
+{
+	struct VPFX(soap_parser) *soap;
+
+	CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
+	AN(soapp);
+	AZ(*soapp);
+	AN(vcl_name);
+	AN(args);
+
+	soap_init_thread(ctx);
+
+	ALLOC_OBJ(soap, SOAP_PARSER_MAGIC);
+	AN(soap);
+
+	if (args->source == VENUM(req_body)) {
+		soap->source = SOAPS_REQ_BODY;
+		if (! args->valid_req_body) {
+			VRT_fail(ctx, "new %s: req_body argument "
+			    "is required with source=req_body",
+			    vcl_name);
+			vmod_parser__fini(&soap);
+			return;
+		}
+		soap->can_VRB_REMAIN = (args->req_body == VENUM(all));
+	} else if (args->source == VENUM(resp_body)) {
+		soap->source = SOAPS_RESP_BODY;
+	} else {
+		WRONG("source argument");
+	}
+	REPLACE(soap->vcl_name, vcl_name);
+	soap->priv.magic = 0x5FF42842;
+	VSLIST_INIT(&soap->priv.namespaces);
+	*soapp = soap;
+}
+
+VCL_VOID
+vmod_parser__fini(struct VPFX(soap_parser) **soapp)
+{
+	struct VPFX(soap_parser) *soap;
+	struct soap_namespace *ns, *ns2;
+
+	TAKE_OBJ_NOTNULL(soap, soapp, SOAP_PARSER_MAGIC);
+	REPLACE(soap->vcl_name, NULL);
+
+	// ref clean_vcl
+	VSLIST_FOREACH_SAFE(ns, &soap->priv.namespaces, list, ns2) {
+		VSLIST_REMOVE_HEAD(&soap->priv.namespaces, list);
+		FREE_OBJ(ns);
+	}
+
+	FREE_OBJ(soap);
+}
+
+VCL_VOID
+vmod_parser_add_namespace(VRT_CTX,
+    struct VPFX(soap_parser) *soap, VCL_STRING prefix, VCL_STRING uri)
+{
+	struct soap_namespace *ns;
+
+	CHECK_OBJ_NOTNULL(soap, SOAP_PARSER_MAGIC);
+
+	if (ctx->method != VCL_MET_INIT) {
+		VRT_fail(ctx, "%s.add_namespace() may only be called "
+		    "from vcl_init{}", soap->vcl_name);
+		return;
+	}
+
+	if (prefix == NULL || *prefix == '\0' ||
+	    uri == NULL || *uri == '\0') {
+		VRT_fail(ctx, "%s.add_namespace: prefix or uri "
+		    "empty", soap->vcl_name);
+		return;
+	}
+
+	//// called in _init()
+	// soap_init_thread(ctx->vsl);
+
+	if (test_ns(prefix, uri)) {
+		// XXX no idea if this can ever fail
+		VRT_fail(ctx, "%s.add_namespace: validation failed",
+		    soap->vcl_name);
+		return;
+	}
+
+	// ref vmod_add_namespace
+	ALLOC_OBJ(ns, PRIV_SOAP_NAMESPACE_MAGIC);
+	AN(ns);
+
+	ns->prefix = prefix;
+	ns->uri = uri;
+	VSLIST_INSERT_HEAD(&soap->priv.namespaces, ns, list);
+}
+
+sess_record *
+obj_priv_soap_get(VRT_CTX, const struct VPFX(soap_parser) *soap)
+{
+	struct vmod_priv *priv;
+
+	CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
+	CHECK_OBJ_NOTNULL(soap, SOAP_PARSER_MAGIC);
+
+	soap_init_thread(ctx);
+
+	priv = VRT_priv_task(ctx, soap);
+	if (priv == NULL) {
+		VRT_fail(ctx, "No priv_task");
+		return (NULL);
+	}
+
+	return (priv_soap_get(ctx, priv));
+}
+
+VCL_STRING
+vmod_parser_header_xpath(VRT_CTX,
+    struct VPFX(soap_parser) *soap, VCL_STRING xpath)
+{
+	struct priv_soap_task *soap_task = obj_priv_soap_get(ctx, soap);
+
+	if (soap_task == NULL)
+		return (NULL);
+	AN(xpath);
+
+	if (process_request(soap_task, HEADER_DONE,
+		soap->source,
+		soap->can_VRB_REMAIN) == 0) {
+		return (evaluate_xpath(&soap->priv, soap_task,
+		    soap_task->req_xml->header, xpath));
+	}
+	return ("");
+}
+
+VCL_STRING
+vmod_parser_body_xpath(VRT_CTX,
+    struct VPFX(soap_parser) *soap, VCL_STRING xpath)
+{
+	struct priv_soap_task *soap_task = obj_priv_soap_get(ctx, soap);
+
+	if (soap_task == NULL)
+		return (NULL);
+	AN(xpath);
+
+	if (process_request(soap_task, BODY_DONE,
+		soap->source,
+		soap->can_VRB_REMAIN) == 0) {
+		return (evaluate_xpath(&soap->priv, soap_task,
+		    soap_task->req_xml->body, xpath));
+	}
+	return ("");
 }

@@ -9,9 +9,16 @@ server s1 {
 
 varnish v1 -vcl+backend {
     import ${vmod_soap};
+    import std;
 
     sub vcl_recv
     {
+            if (req.http.Content-Encoding &&
+                req.http.Content-Encoding != "gzip") {
+                    return (synth(400, "Content-Encoding not supported"));
+            }
+            std.cache_req_body(1M);
+
             if(soap.is_valid()) {
                     set req.http.soap-ws-ns = soap.action_namespace();
             }

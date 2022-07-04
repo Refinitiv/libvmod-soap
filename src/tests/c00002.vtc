@@ -12,9 +12,14 @@ server s1 {
 
 varnish v1 -vcl+backend {
     import ${vmod_soap};
+    import std;
 
     sub vcl_recv
     {
+            if (req.http.Content-Encoding ~ "(?i)\bgzip\b") {
+                    set req.filters = "gunzip";
+            }
+            std.cache_req_body(1M, partial=true);
             if(soap.is_valid()) {
                     set req.http.soap-ws-ns = soap.action_namespace();
             }

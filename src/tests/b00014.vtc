@@ -1,0 +1,112 @@
+varnishtest "SOAP OO: valid xpath header and body"
+
+server s1 {
+	rxreq
+	expect req.http.soap-uuid == "lenin"
+	txresp
+
+	rxreq
+	# aborted
+} -start
+
+varnish v1 -vcl+backend {
+	import ${vmod_soap};
+	import std;
+
+	sub vcl_init {
+		new body_all = soap.parser(
+			source=req_body,
+			req_body=all);
+		body_all.add_namespace("ui", "http://schemas.reuters.com/ns/2005/08/infrastructure/tornado_soap");
+		body_all.add_namespace("uuid", "http://schemas.reuters.com/ns/2007/10/cp/user_identity");
+
+		new body_cached = soap.parser(
+			source=req_body,
+			req_body=cached);
+		body_cached.add_namespace("ui", "http://schemas.reuters.com/ns/2005/08/infrastructure/tornado_soap");
+		body_cached.add_namespace("uuid", "http://schemas.reuters.com/ns/2007/10/cp/user_identity");
+	}
+
+	sub vcl_recv {
+		std.cache_req_body(401B, partial=true);
+		if(req.url == "/header") {
+			if (req.http.how == "all") {
+				set req.http.soap-uuid =
+				    body_all.header_xpath("ui:userIdentity/uuid:UUID");
+				return (synth(204));
+			} else {
+				set req.http.soap-uuid =
+				    body_cached.header_xpath("ui:userIdentity/uuid:UUID");
+			}
+		}
+		else {
+			if (req.http.how == "all") {
+				set req.http.soap-uuid =
+				    body_all.body_xpath("ui:userIdentity/uuid:UUID");
+				return (synth(204));
+			} else {
+				set req.http.soap-uuid =
+				    body_cached.body_xpath("ui:userIdentity/uuid:UUID");
+			}
+		}
+	}
+} -start
+
+client c1 {
+        timeout 8
+        txreq -req POST -url "/header" -hdr "how: all" \
+            -body {<?xml version="1.0" encoding="utf-8"?>
+                <Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+                <Header>
+                <userIdentity xmlns="http://schemas.reuters.com/ns/2005/08/infrastructure/tornado_soap">
+                <UUID xmlns="http://schemas.reuters.com/ns/2007/10/cp/user_identity">lenin</UUID>
+                </userIdentity>
+                </Header><Body>
+                <Test xmlns="http://schemas.reuters.com/mytest"/>
+                </Body></Envelope>
+        }
+        rxresp
+        expect resp.status == 204
+
+        txreq -req POST -url "/header" -hdr "how: cached" \
+            -body {<?xml version="1.0" encoding="utf-8"?>
+                <Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+                <Header>
+                <userIdentity xmlns="http://schemas.reuters.com/ns/2005/08/infrastructure/tornado_soap">
+                <UUID xmlns="http://schemas.reuters.com/ns/2007/10/cp/user_identity">lenin</UUID>
+                </userIdentity>
+                </Header><Body>
+                <Test xmlns="http://schemas.reuters.com/mytest"/>
+                </Body></Envelope>
+        }
+        rxresp
+        expect resp.status == 200
+
+        txreq -req POST -url "/body" -hdr "how: all" \
+            -body {<?xml version="1.0" encoding="utf-8"?>
+                <Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+                <Header>
+                </Header><Body>
+                <Test xmlns="http://schemas.reuters.com/mytest"/>
+                <userIdentity xmlns="http://schemas.reuters.com/ns/2005/08/infrastructure/tornado_soap">
+                <UUID xmlns="http://schemas.reuters.com/ns/2007/10/cp/user_identity">obama</UUID>
+                </userIdentity>
+                </Body></Envelope>
+        }
+        rxresp
+        expect resp.status == 204
+
+        txreq -req POST -url "/body" -hdr "how: cached" \
+            -body {<?xml version="1.0" encoding="utf-8"?>
+                <Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+                <Header>
+                </Header><Body>
+                <Test xmlns="http://schemas.reuters.com/mytest"/>
+                <userIdentity xmlns="http://schemas.reuters.com/ns/2005/08/infrastructure/tornado_soap">
+                <UUID xmlns="http://schemas.reuters.com/ns/2007/10/cp/user_identity">obama</UUID>
+                </userIdentity>
+                </Body></Envelope>
+        }
+        rxresp
+        expect resp.status == 503
+} -run
