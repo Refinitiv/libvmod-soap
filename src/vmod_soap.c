@@ -481,7 +481,8 @@ struct VPFX(soap_parser) {
 	unsigned			can_VRB_REMAIN:1;
 	enum soap_source		source;
 	char				*vcl_name;
-	VSLIST_HEAD(, soap_namespace)	namespaces;
+	// XXX basically just namespaces
+	struct priv_soap_vcl		priv;
 };
 
 VCL_VOID
@@ -517,7 +518,8 @@ vmod_parser__init(VRT_CTX, struct VPFX(soap_parser) **soapp,
 		WRONG("source argument");
 	}
 	REPLACE(soap->vcl_name, vcl_name);
-	VSLIST_INIT(&soap->namespaces);
+	soap->priv.magic = 0x5FF42842;
+	VSLIST_INIT(&soap->priv.namespaces);
 	*soapp = soap;
 }
 
@@ -531,8 +533,8 @@ vmod_parser__fini(struct VPFX(soap_parser) **soapp)
 	REPLACE(soap->vcl_name, NULL);
 
 	// ref clean_vcl
-	VSLIST_FOREACH_SAFE(ns, &soap->namespaces, list, ns2) {
-		VSLIST_REMOVE_HEAD(&soap->namespaces, list);
+	VSLIST_FOREACH_SAFE(ns, &soap->priv.namespaces, list, ns2) {
+		VSLIST_REMOVE_HEAD(&soap->priv.namespaces, list);
 		FREE_OBJ(ns);
 	}
 
@@ -576,7 +578,7 @@ vmod_parser_add_namespace(VRT_CTX,
 
 	ns->prefix = prefix;
 	ns->uri = uri;
-	VSLIST_INSERT_HEAD(&soap->namespaces, ns, list);
+	VSLIST_INSERT_HEAD(&soap->priv.namespaces, ns, list);
 }
 
 sess_record *
@@ -607,7 +609,13 @@ vmod_parser_header_xpath(VRT_CTX,
 	if (soap_task == NULL)
 		return (NULL);
 	AN(xpath);
-	return (NULL);
+
+	if (process_request(soap_task, HEADER_DONE,
+		soap->can_VRB_REMAIN) == 0) {
+		return (evaluate_xpath(&soap->priv, soap_task,
+		    soap_task->req_xml->header, xpath));
+	}
+	return ("");
 }
 
 VCL_STRING
@@ -619,5 +627,11 @@ vmod_parser_body_xpath(VRT_CTX,
 	if (soap_task == NULL)
 		return (NULL);
 	AN(xpath);
-	return (NULL);
+
+	if (process_request(soap_task, BODY_DONE,
+		soap->can_VRB_REMAIN) == 0) {
+		return (evaluate_xpath(&soap->priv, soap_task,
+		    soap_task->req_xml->body, xpath));
+	}
+	return ("");
 }
