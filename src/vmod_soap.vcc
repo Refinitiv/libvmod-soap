@@ -85,6 +85,11 @@ the requets body (potentially making it unavailable to the backend
 request and other consumers) or if it is limited to the ``cached``
 portion.
 
+.. XXX run own filter chain?
+
+For ``source=resp_body``, the object in cache must be uncompressed, so
+``set beresp.do_gunzip = true`` should be used on the backend side.
+
 Multiple instances on the same *source* can be instantiated to parse
 multiple reponse bodies across restarts.
 

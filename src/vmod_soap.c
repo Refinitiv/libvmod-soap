@@ -40,6 +40,12 @@
 static int		refcount = 0;
 static apr_pool_t	*apr_pool = NULL;
 
+enum soap_source {
+	SOAPS_INVALID = 0,
+	SOAPS_REQ_BODY,
+	SOAPS_RESP_BODY
+};
+
 enum soap_state {
 	NONE = 0,
 	INIT,
@@ -173,7 +179,7 @@ read_iter_f(void *priv, unsigned flush, const void *ptr, ssize_t len)
 
 	CAST_OBJ_NOTNULL(task, priv, PRIV_SOAP_TASK_MAGIC);
 
-	if (task->state == FAILED)
+	if (task->state == FAILED || task->state == BODY_DONE)
 		return (0);
 
 	assert(task->state == INIT ||
@@ -196,12 +202,13 @@ read_iter_f(void *priv, unsigned flush, const void *ptr, ssize_t len)
 }
 
 int process_request(struct priv_soap_task *task, enum soap_state state,
-    unsigned can_eat)
+    enum soap_source source, unsigned can_eat)
 {
 	enum soap_state old;
 	int r;
 
-	if (task->ctx->req->req_body_status == BS_NONE)
+	if (source == SOAPS_REQ_BODY &&
+	    task->ctx->req->req_body_status == BS_NONE)
 		return (-1);
 	while (task->state < state) {
 		old = task->state;
@@ -216,8 +223,22 @@ int process_request(struct priv_soap_task *task, enum soap_state state,
 		case INIT:
 		case HEADER_DONE:
 		case ACTION_AVAILABLE:
-			r = VRB_Iterate(task->ctx->req->wrk, task->ctx->vsl,
-			    task->ctx->req, read_iter_f, task, task->vrb_what);
+			if (source == SOAPS_REQ_BODY) {
+				r = VRB_Iterate(task->ctx->req->wrk, task->ctx->vsl,
+				    task->ctx->req, read_iter_f, task, task->vrb_what);
+			} else {
+				assert(source == SOAPS_RESP_BODY);
+				if (task->ctx->req != NULL &&
+				    task->ctx->req->objcore != NULL) {
+					r = ObjIterate(task->ctx->req->wrk,
+					    task->ctx->req->objcore,
+					    task, read_iter_f, 0);
+				} else {
+					VSLb(task->ctx->vsl, SLT_Debug,
+					    "no objcore");
+					r = -1;
+				}
+			}
 			if (task->vrb_what == VRB_CACHED && can_eat) {
 				task->vrb_what = VRB_REMAIN;
 				continue;
@@ -324,14 +345,14 @@ VCL_BOOL v_matchproto_(td_soap_is_valid)
 {
 	struct priv_soap_task *soap_task = priv_soap_get(ctx, priv);
 
-	return (process_request(soap_task, ACTION_AVAILABLE, 1) == 0);
+	return (process_request(soap_task, ACTION_AVAILABLE, SOAPS_REQ_BODY, 1) == 0);
 }
 
 VCL_STRING v_matchproto_(td_soap_action)
 	vmod_action(VRT_CTX, struct vmod_priv *priv /* PRIV_TASK */)
 {
 	struct priv_soap_task *soap_task = priv_soap_get(ctx, priv);
-	if(process_request(soap_task, ACTION_AVAILABLE, 1) == 0) {
+	if(process_request(soap_task, ACTION_AVAILABLE, SOAPS_REQ_BODY, 1) == 0) {
 		return (soap_task->req_xml->action_name);
 	}
 	return ("");
@@ -341,7 +362,7 @@ VCL_STRING v_matchproto_(td_soap_action_namespace)
 	vmod_action_namespace(VRT_CTX, struct vmod_priv *priv /* PRIV_TASK */)
 {
 	struct priv_soap_task *soap_task = priv_soap_get(ctx, priv);
-	if(process_request(soap_task, ACTION_AVAILABLE, 1) == 0) {
+	if(process_request(soap_task, ACTION_AVAILABLE, SOAPS_REQ_BODY, 1) == 0) {
 		return (soap_task->req_xml->action_namespace);
 	}
 	return ("");
@@ -375,7 +396,7 @@ VCL_STRING v_matchproto_(td_soap_xpath_header)
 	AN(priv_task);
 	soap_task = priv_soap_get(ctx, priv_task);
 
-	if(process_request(soap_task, HEADER_DONE, 1) == 0) {
+	if(process_request(soap_task, HEADER_DONE, SOAPS_REQ_BODY, 1) == 0) {
 		return (evaluate_xpath(soap_vcl, soap_task, soap_task->req_xml->header, xpath));
 	}
 	return ("");
@@ -393,7 +414,7 @@ VCL_STRING v_matchproto_(td_soap_xpath_body)
 	AN(priv_task);
 	soap_task = priv_soap_get(ctx, priv_task);
 
-	if(process_request(soap_task, BODY_DONE, 1) == 0) {
+	if(process_request(soap_task, BODY_DONE, SOAPS_REQ_BODY, 1) == 0) {
 		return (evaluate_xpath(soap_vcl, soap_task, soap_task->req_xml->body, xpath));
 	}
 	return ("");
@@ -468,12 +489,6 @@ soap_init_thread(VRT_CTX)
 		xmlSetStructuredErrorFunc(ctx->msg, soap_vsb_structured_error);
 	}
 }
-
-enum soap_source {
-	SOAPS_INVALID = 0,
-	SOAPS_REQ_BODY,
-	SOAPS_RESP_BODY
-};
 
 struct VPFX(soap_parser) {
 	unsigned			magic;
@@ -611,6 +626,7 @@ vmod_parser_header_xpath(VRT_CTX,
 	AN(xpath);
 
 	if (process_request(soap_task, HEADER_DONE,
+		soap->source,
 		soap->can_VRB_REMAIN) == 0) {
 		return (evaluate_xpath(&soap->priv, soap_task,
 		    soap_task->req_xml->header, xpath));
@@ -629,6 +645,7 @@ vmod_parser_body_xpath(VRT_CTX,
 	AN(xpath);
 
 	if (process_request(soap_task, BODY_DONE,
+		soap->source,
 		soap->can_VRB_REMAIN) == 0) {
 		return (evaluate_xpath(&soap->priv, soap_task,
 		    soap_task->req_xml->body, xpath));
