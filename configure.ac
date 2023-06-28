@@ -46,6 +46,9 @@ PKG_CHECK_VAR([LIBVARNISHAPI_LIBDIR], [varnishapi], [libdir])
 AC_SUBST([VARNISH_LIBRARY_PATH],
 	[$LIBVARNISHAPI_LIBDIR:$LIBVARNISHAPI_LIBDIR/varnish])
 
+PKG_CHECK_EXISTS([apr-1], [apr_found=1], [AC_MSG_ERROR([Unable to find apr-devel])])
+PKG_CHECK_EXISTS([libxml-2.0], [xml_found=1], [AC_MSG_ERROR([Unable to find libxml2-devel])])
+
 AC_CONFIG_FILES([
 	Makefile
 	src/Makefile

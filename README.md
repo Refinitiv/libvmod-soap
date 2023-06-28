@@ -103,6 +103,19 @@ FaultMessage. Note that FaultMessage contains any internal errors found.
 Format of the response depends of the SOAP version of the request (either 1.1 or 1.2).
 
 
+Development
+=============
+
+If you have installed Varnish to a non-standard directory, call
+``autogen.sh`` and ``configure`` with ``PKG_CONFIG_PATH`` pointing to
+the appropriate path. For example, when varnishd configure was called
+with ``--prefix=$PREFIX``, use
+
+```shell
+export PKG_CONFIG_PATH=${PREFIX}/lib/pkgconfig
+```
+
+
 Copyright
 =============
 This document is licensed under BSD-2-Clause license. See LICENSE for details.
